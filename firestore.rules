@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: classes
+    //   - name: string (required)
+    //   - teacherEmail: string (required)
+    //   - createdAt: timestamp
+    //
+    // Collection: classes/{classId}/teacherAvailability
+    //   - date: string (required, YYYY-MM-DD)
+    //   - slots: list of {start: string, end: string, isAvailable: bool}
+    //
+    // Collection: classes/{classId}/parentResponses
+    //   - studentName: string (required)
+    //   - parentEmail: string
+    //   - unavailableSlots: list of {date: string, start: string, end: string}
+    //
+    // Collection: classes/{classId}/schedules
+    //   - slots: list of {studentName: string, date: string, start: string, end: string}
+    //   - settings: map with breakInterval: int
+    // ===============================================================
+
+    // Helper Functions
+    function isAdmin() {
+      return false; // 管理者機能は現在無効
+    }
+
+    // Rules
+    match /classes/{classId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true; // 本来はteacherIdの一致を確認すべきだが、ログインなしのため簡易化
+      allow delete: if true;
+
+      match /teacherAvailability/{date} {
+        allow read: if true;
+        allow write: if true;
+      }
+
+      match /parentResponses/{studentId} {
+        allow read: if true;
+        allow create: if true;
+        allow update: if true;
+        allow delete: if true;
+      }
+
+      match /schedules/{scheduleId} {
+        allow read: if true;
+        allow write: if true;
+      }
+    }
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "entities": {
+    "Class": {
+      "title": "Class",
+      "description": "クラス情報",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "クラス名" },
+        "teacherId": { "type": "string", "description": "担任の識別ID" },
+        "schoolName": { "type": "string", "description": "学校名" },
+        "teacherName": { "type": "string", "description": "担任名" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "teacherId"]
+    },
+    "TeacherAvailability": {
+      "title": "TeacherAvailability",
+      "description": "教職員の面談可能時間",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date", "description": "日付 (YYYY-MM-DD)" },
+        "slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "start": { "type": "string", "description": "開始時間 (HH:mm)" },
+              "end": { "type": "string", "description": "終了時間 (HH:mm)" },
+              "isAvailable": { "type": "boolean" }
+            }
+          }
+        }
+      },
+      "required": ["date", "slots"]
+    },
+    "ParentResponse": {
+      "title": "ParentResponse",
+      "description": "保護者の面談NG時間",
+      "type": "object",
+      "properties": {
+        "studentName": { "type": "string", "description": "児童・生徒名" },
+        "normalizedStudentName": { "type": "string", "description": "空白を除去した児童・生徒名" },
+        "guardianPhone": { "type": "string", "description": "保護者の電話番号（兄弟紐付け用）" },
+        "parentEmail": { "type": "string", "description": "保護者のメールアドレス" },
+        "talkTopics": { "type": "string", "description": "面談で話したいこと" },
+        "alternativeSchedule": { "type": "string", "description": "代替の日程希望" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "回答日時" },
+        "unavailableSlots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "date": { "type": "string", "format": "date" },
+              "start": { "type": "string" },
+              "end": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["studentName"]
+    },
+    "Schedule": {
+      "title": "Schedule",
+      "description": "確定した面談スケジュール",
+      "type": "object",
+      "properties": {
+        "slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "studentName": { "type": "string" },
+              "date": { "type": "string" },
+              "start": { "type": "string" },
+              "end": { "type": "string" }
+            }
+          }
+        },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "breakInterval": { "type": "integer", "description": "休憩を入れる間隔 (人数)" }
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/classes/{classId}": { "schema": "Class", "description": "クラスの基本情報" },
+    "/classes/{classId}/teacherAvailability/{date}": { "schema": "TeacherAvailability", "description": "教職員の空き時間" },
+    "/classes/{classId}/parentResponses/{studentId}": { "schema": "ParentResponse", "description": "保護者の回答" },
+    "/classes/{classId}/schedules/current": { "schema": "Schedule", "description": "現在のスケジュール" }
+  }
+}
