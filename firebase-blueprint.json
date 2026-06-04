@@ -44,6 +44,7 @@
         "parentEmail": { "type": "string", "description": "保護者のメールアドレス" },
         "talkTopics": { "type": "string", "description": "面談で話したいこと" },
         "alternativeSchedule": { "type": "string", "description": "代替の日程希望" },
+        "wantsZoom": { "type": "boolean", "description": "Zoom面談希望フラグ" },
         "createdAt": { "type": "string", "format": "date-time", "description": "回答日時" },
         "unavailableSlots": {
           "type": "array",

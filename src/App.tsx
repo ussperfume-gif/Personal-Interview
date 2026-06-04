@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { HashRouter as Router, Routes, Route, Link, useNavigate, useParams } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { collection, doc, getDoc, getDocs, setDoc, addDoc, query, where, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { Calendar, Users, FileText, Settings, LogIn, LogOut, Plus, Trash2, Check, X, ChevronRight, Printer, Clock, Save } from 'lucide-react';
@@ -49,6 +49,7 @@ interface ParentResponse {
   talkTopics?: string;
   alternativeSchedule?: string;
   unavailableSlots: { date: string; start: string; end: string }[];
+  wantsZoom?: boolean;
   createdAt?: string;
 }
 
@@ -71,16 +72,28 @@ interface Schedule {
 // --- Components ---
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
+  const location = useLocation();
+  const isParentView = location.pathname.includes('/parent/');
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-[#1A1C1E] font-sans">
       <header className="bg-white border-b border-[#E1E2E4] sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white">
-              <Calendar size={20} />
+          {isParentView ? (
+            <div className="flex items-center gap-2 select-none">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white">
+                <Calendar size={20} />
+              </div>
+              <span className="font-bold text-[#1A1C1E] text-base md:text-lg tracking-tight">面談スケジュール調整（保護者用回答フォーム）</span>
             </div>
-            <span className="font-bold text-lg tracking-tight">面談スケジュール調整くん</span>
-          </Link>
+          ) : (
+            <Link to="/" className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white">
+                <Calendar size={20} />
+              </div>
+              <span className="font-bold text-lg tracking-tight">面談スケジュール調整くん</span>
+            </Link>
+          )}
           <div className="flex items-center gap-2 text-xs text-[#44474E] bg-[#F0F4F8] px-3 py-1 rounded-full">
             <Save size={12} className="text-green-600" />
             自動保存中
@@ -595,6 +608,7 @@ const ParentResponseList = ({ classId }: { classId: string }) => {
           <thead className="bg-[#F8F9FA] text-sm font-medium text-[#44474E]">
             <tr>
               <th className="px-6 py-3">児童・生徒名</th>
+              <th className="px-6 py-3">希望面談形式</th>
               <th className="px-6 py-3">NGな時間枠数</th>
               <th className="px-6 py-3">面談で話したいこと</th>
               <th className="px-6 py-3">代替の日程希望</th>
@@ -605,6 +619,17 @@ const ParentResponseList = ({ classId }: { classId: string }) => {
             {responses.map((r) => (
               <tr key={r.id} className="hover:bg-[#F8F9FA] transition-colors">
                 <td className="px-6 py-4 font-medium">{r.studentName}</td>
+                <td className="px-6 py-4 text-sm">
+                  {r.wantsZoom ? (
+                    <span className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1 rounded-full inline-flex items-center gap-1">
+                      💻 Zoom
+                    </span>
+                  ) : (
+                    <span className="text-xs font-bold text-gray-600 bg-gray-50 border border-gray-100 px-2 py-1 rounded-full inline-flex items-center gap-1">
+                      🏫 対面
+                    </span>
+                  )}
+                </td>
                 <td className="px-6 py-4 text-sm text-[#44474E]">{r.unavailableSlots.length}枠</td>
                 <td className="px-6 py-4 text-sm text-[#44474E] max-w-[200px] truncate" title={r.talkTopics}>
                   {r.talkTopics || '-'}
@@ -619,7 +644,7 @@ const ParentResponseList = ({ classId }: { classId: string }) => {
             ))}
             {responses.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-[#44474E]">まだ回答がありません。</td>
+                <td colSpan={6} className="px-6 py-12 text-center text-[#44474E]">まだ回答がありません。</td>
               </tr>
             )}
           </tbody>
@@ -703,6 +728,15 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
     });
 
     return siblings.length > 0 ? siblings : null;
+  };
+
+  const getStudentZoomRequest = (studentName: string) => {
+    if (!studentName || studentName === '（休憩）' || studentName === '（空き）' || studentName === '') return false;
+    const nameNoSpacing = studentName.replace(/\s+/g, '');
+    const matched = allClassesResponses[classId]?.find(
+      r => r.studentName.replace(/\s+/g, '') === nameNoSpacing
+    );
+    return matched?.wantsZoom || false;
   };
 
   const generateSchedule = async () => {
@@ -853,12 +887,19 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
                         {slot.start ? `${slot.start} - ${slot.end}` : '-'}
                       </td>
                       <td className="px-6 py-4">
-                        <input
-                          type="text"
-                          value={slot.studentName}
-                          onChange={(e) => updateSlot(i, e.target.value)}
-                          className="w-full bg-transparent border-none focus:ring-0 font-medium p-0"
-                        />
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={slot.studentName}
+                            onChange={(e) => updateSlot(i, e.target.value)}
+                            className="bg-transparent border-none focus:ring-0 font-medium p-0 min-w-0 flex-1"
+                          />
+                          {getStudentZoomRequest(slot.studentName) && (
+                            <span className="flex-shrink-0 text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full select-none" title="Zoom面談を希望しています">
+                              💻 Zoom
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         {siblings && siblings.map((sib, idx) => {
@@ -897,6 +938,7 @@ const ParentForm = () => {
   const [ngSlots, setNgSlots] = useState<{ date: string; start: string; end: string }[]>([]);
   const [talkTopics, setTalkTopics] = useState('');
   const [alternativeSchedule, setAlternativeSchedule] = useState('');
+  const [wantsZoom, setWantsZoom] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
@@ -955,6 +997,7 @@ const ParentForm = () => {
       guardianPhone,
       talkTopics,
       alternativeSchedule,
+      wantsZoom,
       unavailableSlots: ngSlots,
       createdAt: new Date().toISOString()
     };
@@ -1032,6 +1075,54 @@ const ParentForm = () => {
               placeholder="例：09012345678"
               className="w-full px-4 py-3 border border-[#E1E2E4] rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+          </div>
+
+          <div className="bg-blue-50/40 p-6 rounded-2xl border border-blue-100 flex flex-col gap-4">
+            <div>
+              <label className="block text-sm font-bold text-[#1A1C1E]">面談形式の希望</label>
+              <p className="text-xs text-[#44474E] mt-1">
+                ※Zoomでのオンライン面談を希望される場合は「オンライン（Zoom）面談」を選択してください。
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <label className={cn(
+                "flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all bg-white",
+                !wantsZoom
+                  ? "border-blue-600 ring-2 ring-blue-100 text-blue-950"
+                  : "border-[#E1E2E4] text-[#44474E] hover:border-gray-200"
+              )}>
+                <input
+                  type="radio"
+                  name="interview_type"
+                  checked={!wantsZoom}
+                  onChange={() => setWantsZoom(false)}
+                  className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                />
+                <div className="text-left select-none">
+                  <p className="font-bold text-sm">🏫 対面（教室）での面談</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">学校の各教室にて、直接対面で面談を行います。</p>
+                </div>
+              </label>
+
+              <label className={cn(
+                "flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all bg-white",
+                wantsZoom
+                  ? "border-blue-600 ring-2 ring-blue-100 text-blue-950"
+                  : "border-[#E1E2E4] text-[#44474E] hover:border-gray-200"
+              )}>
+                <input
+                  type="radio"
+                  name="interview_type"
+                  checked={wantsZoom}
+                  onChange={() => setWantsZoom(true)}
+                  className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                />
+                <div className="text-left select-none">
+                  <p className="font-bold text-sm text-blue-600">💻 オンライン（Zoom）面談</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">Zoomビデオ会議ツールを利用してオンラインで実施します。</p>
+                </div>
+              </label>
+            </div>
           </div>
 
           <div className="space-y-6">
