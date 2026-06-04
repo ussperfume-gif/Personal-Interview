@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useParams } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Link, useNavigate, useParams } from 'react-router-dom';
 import { collection, doc, getDoc, getDocs, setDoc, addDoc, query, where, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { Calendar, Users, FileText, Settings, LogIn, LogOut, Plus, Trash2, Check, X, ChevronRight, Printer, Clock, Save } from 'lucide-react';
@@ -503,15 +503,15 @@ const TeacherAvailabilityManager = ({ classId }: { classId: string }) => {
               <div 
                 className="flex-1 bg-white p-3 rounded-lg border border-blue-200 break-all text-xs font-mono text-blue-600 select-all cursor-pointer hover:bg-blue-50/40 transition-colors"
                 onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}/parent/${classId}`);
+                  navigator.clipboard.writeText(`${window.location.origin}/#/parent/${classId}`);
                   alert('回答URLをコピーしました');
                 }}
                 title="クリックしてURLをコピー"
               >
-                {window.location.origin}/parent/{classId}
+                {window.location.origin}/#/parent/{classId}
               </div>
               <a 
-                href={`${window.location.origin}/parent/${classId}`}
+                href={`${window.location.origin}/#/parent/${classId}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-center px-3 py-2 bg-blue-50 border border-blue-200 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors whitespace-nowrap"
@@ -1149,7 +1149,7 @@ const RequestLetterView = () => {
 
   if (!classInfo) return <div className="text-center py-20">読み込み中...</div>;
 
-  const parentUrl = `${window.location.origin}/parent/${classId}`;
+  const parentUrl = `${window.location.origin}/#/parent/${classId}`;
 
   return (
     <div className="max-w-4xl mx-auto py-8">
