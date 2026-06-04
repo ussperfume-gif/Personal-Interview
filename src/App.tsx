@@ -499,11 +499,26 @@ const TeacherAvailabilityManager = ({ classId }: { classId: string }) => {
             </div>
           )}
           <div className="space-y-3">
-            <div className="bg-white p-3 rounded-lg border border-blue-200 break-all text-xs font-mono text-blue-600 select-all cursor-pointer" onClick={() => {
-              navigator.clipboard.writeText(`${window.location.origin}/parent/${classId}`);
-              alert('回答URLをコピーしました');
-            }}>
-              {window.location.origin}/parent/{classId}
+            <div className="flex gap-2">
+              <div 
+                className="flex-1 bg-white p-3 rounded-lg border border-blue-200 break-all text-xs font-mono text-blue-600 select-all cursor-pointer hover:bg-blue-50/40 transition-colors"
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/parent/${classId}`);
+                  alert('回答URLをコピーしました');
+                }}
+                title="クリックしてURLをコピー"
+              >
+                {window.location.origin}/parent/{classId}
+              </div>
+              <a 
+                href={`${window.location.origin}/parent/${classId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center px-3 py-2 bg-blue-50 border border-blue-200 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors whitespace-nowrap"
+                title="別のタブで保護者用の回答フォーム（アンケート）を開く"
+              >
+                テスト開く
+              </a>
             </div>
             <Link
               to={`/request-letter/${classId}`}
@@ -1145,6 +1160,15 @@ const RequestLetterView = () => {
           右上の「共有」ボタンから発行される「公開用URL（-pre-で始まるURL）」の管理画面からお手紙を作成してください。
         </div>
       )}
+      
+      <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800 flex items-start gap-2.5 print:hidden shadow-sm">
+        <span className="text-lg">💡</span>
+        <div>
+          <p className="font-bold mb-0.5">手紙の内容をお好みに合わせてその場で直接編集できます</p>
+          <p className="text-xs text-blue-700">お名前、学校名、タイトル、本文、注意書きなど、手紙の任意の文字をクリックするとキーボード操作で自由に書き換えることができます。編集内容は印刷やPDF保存にそのまま反映されます。（日時や動的なリンクURLは変更しないでください）</p>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between mb-8 print:hidden">
         <button
           onClick={() => navigate(`/teacher/class/${classId}`)}
@@ -1173,63 +1197,84 @@ const RequestLetterView = () => {
 
       <div id="letter-content" className="bg-white p-12 shadow-lg min-h-[297mm] print:shadow-none print:p-0">
         <div className="text-right mb-8">
-          <p>{format(new Date(), 'yyyy年M月d日')}</p>
+          <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded inline-block cursor-text hover:border-b hover:border-gray-300 min-w-[120px] transition-colors">{format(new Date(), 'yyyy年M月d日')}</p>
         </div>
 
-      <div className="mb-12">
-        <p className="text-lg">保護者 各位</p>
-        <p className="text-right">{classInfo.schoolName || '（学校名）'}</p>
-        <p className="text-right">{classInfo.name} 担任 {classInfo.teacherName ? `${classInfo.teacherName}` : '（氏名）'}</p>
-      </div>
+        <div className="mb-12">
+          <p contentEditable suppressContentEditableWarning className="text-lg outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">保護者 各位</p>
+          <p contentEditable suppressContentEditableWarning className="text-right outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">{classInfo.schoolName || '（学校名）'}</p>
+          <p contentEditable suppressContentEditableWarning className="text-right outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">{classInfo.name} 担任 {classInfo.teacherName ? `${classInfo.teacherName}` : '（氏名）'}</p>
+        </div>
 
-      <h1 className="text-2xl font-bold text-center mb-12 underline underline-offset-8">個人面談の実施について（お願い）</h1>
+        <h1 contentEditable suppressContentEditableWarning className="text-2xl font-bold text-center mb-12 underline underline-offset-8 outline-none focus:bg-blue-50/50 p-2 rounded cursor-text hover:border hover:border-gray-300 transition-colors">個人面談の実施について（お願い）</h1>
 
-      <p className="mb-8 leading-relaxed">
-        拝啓 時下ますますご清祥のこととお慶び申し上げます。日頃より本校の教育活動にご理解とご協力をいただき、厚く御礼申し上げます。<br />
-        さて、本年度も下記の日程にて個人面談を実施いたします。つきましては、日程調整のため、ご都合の悪い（面談ができない）時間帯を以下のアンケートよりご回答くださいますようお願い申し上げます。
-      </p>
+        <p contentEditable suppressContentEditableWarning className="mb-8 leading-relaxed outline-none focus:bg-blue-50/50 p-2 rounded cursor-text hover:border hover:border-gray-300 transition-colors">
+          拝啓 時下ますますご清祥のこととお慶び申し上げます。日頃より本校の教育活動にご理解とご協力をいただき、厚く御礼申し上げます。<br />
+          さて、本年度も下記の日程にて個人面談を実施いたします。つきましては、日程調整のため、ご都合の悪い（面談ができない）時間帯を以下のアンケートよりご回答くださいますようお願い申し上げます。
+        </p>
 
-      <div className="border-2 border-black p-8 mb-8">
-        <p className="text-center font-bold mb-6 text-xl">記</p>
-        <div className="space-y-4 mb-8">
-          <p className="font-bold">1. 実施日時</p>
-          <div className="pl-4 space-y-1">
-            {availabilities.map((avail, i) => (
-              <p key={i}>
-                {format(parse(avail.date, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja })}
-                {' '}
-                {avail.slots[0].start} ～ {avail.slots[avail.slots.length - 1].end}
+        <div className="border-2 border-black p-8 mb-8">
+          <p contentEditable suppressContentEditableWarning className="text-center font-bold mb-6 text-xl outline-none focus:bg-blue-50/50 p-1 rounded cursor-text transition-colors">記</p>
+          <div className="space-y-4 mb-8">
+            <p className="font-bold">1. 実施日時</p>
+            <div className="pl-4 space-y-1">
+              {availabilities.map((avail, i) => (
+                <p key={i}>
+                  {format(parse(avail.date, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja })}
+                  {' '}
+                  {avail.slots[0].start} ～ {avail.slots[avail.slots.length - 1].end}
+                </p>
+              ))}
+            </div>
+            
+            <p className="font-bold">2. 回答方法</p>
+            <div className="pl-4">
+              <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">以下のURL、または右記のQRコードよりアクセスし、ご回答ください。</p>
+              <div className="mt-4 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex-1 w-full">
+                  <div className="p-4 bg-gray-50 border border-gray-200 rounded break-all font-mono text-sm shadow-sm hover:border-blue-300 transition-colors">
+                    <a 
+                      href={parentUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
+                      title="保護者用回答アンケート画面（別タブで開く）"
+                    >
+                      <span>{parentUrl}</span>
+                    </a>
+                  </div>
+                </div>
+                <div className="flex flex-col items-center p-2.5 border border-gray-200 rounded-lg bg-white shadow-sm flex-shrink-0 w-[140px]">
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(parentUrl)}`} 
+                    alt="QR Code" 
+                    className="w-[110px] h-[110px]"
+                    referrerPolicy="no-referrer"
+                  />
+                  <span className="text-[10px] text-gray-500 mt-1 font-sans font-medium">スマホ回答用のQRコード</span>
+                </div>
+              </div>
+            </div>
+            
+            <p className="font-bold">3. 回答期限</p>
+            <div className="pl-4">
+              <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">
+                {classInfo.deadline 
+                  ? format(parse(classInfo.deadline, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja })
+                  : '（月） （日）'}
+                まで
               </p>
-            ))}
-          </div>
-          
-          <p className="font-bold">2. 回答方法</p>
-          <div className="pl-4">
-            <p>以下のURL、またはQRコードよりアクセスし、ご回答ください。</p>
-            <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded break-all font-mono text-sm">
-              {parentUrl}
             </div>
           </div>
-          
-          <p className="font-bold">3. 回答期限</p>
-          <div className="pl-4">
-            <p>
-              {classInfo.deadline 
-                ? format(parse(classInfo.deadline, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja })
-                : '（月） （日）'}
-              まで
-            </p>
-          </div>
+        </div>
+
+        <div className="mt-12 text-sm text-gray-600 space-y-1">
+          <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">※日程が確定しましたら、後日改めてお知らせいたします。</p>
+          <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">※インターネット環境がない場合は、連絡帳等にてお知らせください。</p>
         </div>
       </div>
-
-      <div className="mt-12 text-sm text-gray-600">
-        <p>※日程が確定しましたら、後日改めてお知らせいたします。</p>
-        <p>※インターネット環境がない場合は、連絡帳等にてお知らせください。</p>
-      </div>
     </div>
-  </div>
-);
+  );
 };
 
 const LetterView = () => {
@@ -1267,6 +1312,14 @@ const LetterView = () => {
 
   return (
     <div className="max-w-4xl mx-auto py-8">
+      <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800 flex items-start gap-2.5 print:hidden shadow-sm">
+        <span className="text-lg">💡</span>
+        <div>
+          <p className="font-bold mb-0.5">お手紙の内容をその場で直接編集できます</p>
+          <p className="text-xs text-blue-700">お名前、学校名、タイトル、本文、注意書きなど、手紙の任意の文字をクリックするとキーボード操作で自由に書き換えることができます。編集内容は印刷やPDF保存にそのまま反映されます。（決定された面談枠の日時は変更しないでください）</p>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between mb-8 print:hidden">
         <button
           onClick={() => navigate(`/teacher/class/${classId}`)}
@@ -1295,52 +1348,52 @@ const LetterView = () => {
 
       <div id="schedule-letter-content" className="bg-white p-12 shadow-lg min-h-[297mm] print:shadow-none print:p-0">
         <div className="text-right mb-8">
-          <p>{format(new Date(), 'yyyy年M月d日')}</p>
+          <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded inline-block cursor-text hover:border-b hover:border-gray-300 min-w-[120px] transition-colors">{format(new Date(), 'yyyy年M月d日')}</p>
         </div>
 
-      <div className="mb-12">
-        <p className="text-lg">保護者 各位</p>
-        <p className="text-right">{classInfo.schoolName || '（学校名）'}</p>
-        <p className="text-right">{classInfo.name} 担任 {classInfo.teacherName ? `${classInfo.teacherName}` : '（氏名）'}</p>
-      </div>
-
-      <h1 className="text-2xl font-bold text-center mb-12 underline underline-offset-8">個人面談の日程について（お知らせ）</h1>
-
-      <p className="mb-8 leading-relaxed">
-        拝啓 時下ますますご清祥のこととお慶び申し上げます。日頃より本校の教育活動にご理解とご協力をいただき、厚く御礼申し上げます。<br />
-        さて、先日アンケートにてご回答いただきました個人面談の日程が、下記の通り決定いたしましたのでお知らせいたします。<br />
-        お忙しい中とは存じますが、万障お繰り合わせの上、ご来校くださいますようお願い申し上げます。
-      </p>
-
-      <div className="border-2 border-black p-8">
-        <p className="text-center font-bold mb-6 text-xl">記</p>
-        <div className="space-y-4">
-          {schedule.slots.filter(s => s.type === 'interview' && s.studentName && !s.studentName.includes('（')).sort((a,b) => {
-            if (a.date !== b.date) return a.date.localeCompare(b.date);
-            return a.start.localeCompare(b.start);
-          }).map((slot, i) => (
-            <div key={i} className="flex border-b border-gray-200 pb-2">
-              <div className="w-1/3 font-bold">
-                {format(parse(slot.date, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja })}
-              </div>
-              <div className="w-1/3">
-                {slot.start} ～ {slot.end}
-              </div>
-              <div className="w-1/3 text-right">
-                {slot.studentName} 様
-              </div>
-            </div>
-          ))}
+        <div className="mb-12">
+          <p contentEditable suppressContentEditableWarning className="text-lg outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">保護者 各位</p>
+          <p contentEditable suppressContentEditableWarning className="text-right outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">{classInfo.schoolName || '（学校名）'}</p>
+          <p contentEditable suppressContentEditableWarning className="text-right outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">{classInfo.name} 担任 {classInfo.teacherName ? `${classInfo.teacherName}` : '（氏名）'}</p>
         </div>
-      </div>
 
-      <div className="mt-12 text-sm text-gray-600">
-        <p>※ご都合が悪くなった場合は、お早めに担任までご連絡ください。</p>
-        <p>※面談場所は各教室となります。</p>
+        <h1 contentEditable suppressContentEditableWarning className="text-2xl font-bold text-center mb-12 underline underline-offset-8 outline-none focus:bg-blue-50/50 p-2 rounded cursor-text hover:border hover:border-gray-300 transition-colors">個人面談の日程について（お知らせ）</h1>
+
+        <p contentEditable suppressContentEditableWarning className="mb-8 leading-relaxed outline-none focus:bg-blue-50/50 p-2 rounded cursor-text hover:border hover:border-gray-300 transition-colors">
+          拝啓 時下ますますご清祥のこととお慶び申し上げます。日頃より本校の教育活動にご理解とご協力をいただき、厚く御礼申し上げます。<br />
+          さて、先日アンケートにてご回答いただきました個人面談の日程が、下記の通り決定いたしましたのでお知らせいたします。<br />
+          お忙しい中とは存じますが、万障お繰り合わせの上、ご来校くださいますようお願い申し上げます。
+        </p>
+
+        <div className="border-2 border-black p-8">
+          <p contentEditable suppressContentEditableWarning className="text-center font-bold mb-6 text-xl outline-none focus:bg-blue-50/50 p-1 rounded cursor-text transition-colors">記</p>
+          <div className="space-y-4">
+            {schedule.slots.filter(s => s.type === 'interview' && s.studentName && !s.studentName.includes('（')).sort((a,b) => {
+              if (a.date !== b.date) return a.date.localeCompare(b.date);
+              return a.start.localeCompare(b.start);
+            }).map((slot, i) => (
+              <div key={i} className="flex border-b border-gray-200 pb-2">
+                <div className="w-1/3 font-bold text-gray-800">
+                  {format(parse(slot.date, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja })}
+                </div>
+                <div className="w-1/3 text-gray-700">
+                  {slot.start} ～ {slot.end}
+                </div>
+                <div className="w-1/3 text-right font-medium">
+                  {slot.studentName} 様
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-12 text-sm text-gray-600 space-y-1">
+          <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">※ご都合が悪くなった場合は、お早めに担任までご連絡ください。</p>
+          <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">※面談場所は各教室となります。</p>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
 };
 
 export default function App() {
