@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { collection, doc, getDoc, getDocs, setDoc, addDoc, query, where, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import { Calendar, Users, FileText, Settings, LogIn, LogOut, Plus, Trash2, Check, X, ChevronRight, Printer, Clock, Save, GripVertical } from 'lucide-react';
+import { Calendar, Users, FileText, Settings, LogIn, LogOut, Plus, Trash2, Check, X, ChevronRight, Printer, Clock, Save, GripVertical, Download, Upload, FileSpreadsheet, AlertCircle } from 'lucide-react';
 import { format, addMinutes, parse, isAfter, isBefore, isEqual, startOfDay } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
@@ -208,6 +208,57 @@ const TeacherDashboard = () => {
             <p className="text-[#44474E]">クラスが登録されていません。右上のボタンから追加してください。</p>
           </div>
         )}
+      </div>
+
+      {/* 端末間でのデータ共有（同期） */}
+      <div className="mt-8 bg-white p-6 rounded-2xl border border-blue-200 shadow-sm animate-fade-in">
+        <div className="flex items-center gap-2 mb-3 text-blue-800">
+          <span className="text-xl">🛜</span>
+          <h4 className="font-bold text-base">他の端末（スマホ、別のPC、タブレット等）とデータを同期・共有する</h4>
+        </div>
+        <p className="text-xs text-[#44474E] leading-relaxed mb-4">
+          本アプリはお使いのブラウザごとに管理用コード（管理ID）を自動作成してデータを区別しています。
+          そのため、別のパソコンやスマートフォンで開くと空の画面になりますが、<strong>以下の同期方法を行うことで、どの端末からでも同じクラス・面談スケジュールを管理・リアルタイム編集できるようになります。</strong>
+        </p>
+
+        <div className="flex flex-col md:flex-row items-stretch gap-5 p-4 bg-blue-50/40 rounded-xl border border-blue-100">
+          {/* Method 1: QR Code Scan */}
+          <div className="flex flex-col items-center justify-center p-3 border border-gray-200 rounded-xl bg-white shadow-xs w-full md:w-[150px] flex-shrink-0">
+            <img 
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`${window.location.origin}/#/sync/${teacherId}`)}`} 
+              alt="Sync QR Code" 
+              className="w-[110px] h-[110px]"
+              referrerPolicy="no-referrer"
+            />
+            <span className="text-[10px] text-gray-500 mt-2 font-bold text-center">💻 スマホで読み込む</span>
+          </div>
+
+          {/* Method 2: Link Share */}
+          <div className="flex-1 w-full flex flex-col justify-between space-y-3">
+            <div>
+              <p className="text-xs font-bold text-[#1A1C1E] mb-1">他のパソコンやタブレットで開く同期用URL:</p>
+              <div className="flex gap-2">
+                <div className="flex-1 bg-white p-2.5 px-3 rounded-lg border border-gray-200 break-all text-[11px] font-mono text-blue-600 select-all shadow-xs leading-normal flex items-center">
+                  {window.location.origin}/#/sync/{teacherId}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/#/sync/${teacherId}`);
+                    alert('同期キーを含んだURLをコピーしました！このURLをメールやSlack、LINEなどで他の端末に送り、そちらのブラウザで開いてください。');
+                  }}
+                  className="flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all whitespace-nowrap shadow-xs active:scale-95"
+                >
+                  URLをコピー
+                </button>
+              </div>
+            </div>
+            <div className="text-[10px] text-gray-500 space-y-0.5">
+              <p>※同期作業は最初の1回だけでOKです。以降、どの端末からでも同じデータにアクセスでき、自動更新されます。</p>
+              <p className="text-blue-700 font-medium">※保護者用の回答用リンクとは異なります。本リンクは「先生の管理画面」を同期するためのリンクですので、保護者には共有しないでください。</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -588,6 +639,9 @@ const TeacherAvailabilityManager = ({ classId }: { classId: string }) => {
 
 const ParentResponseList = ({ classId }: { classId: string }) => {
   const [responses, setResponses] = useState<ParentResponse[]>([]);
+  const [showCsvBox, setShowCsvBox] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const q = collection(db, 'classes', classId, 'parentResponses');
@@ -598,11 +652,379 @@ const ParentResponseList = ({ classId }: { classId: string }) => {
     return unsubscribe;
   }, [classId]);
 
+  // CSV Export
+  const handleExportCSV = () => {
+    if (responses.length === 0) {
+      alert('エクスポートするデータがありません。');
+      return;
+    }
+
+    const csvRows = [];
+    const headers = ["児童・生徒名", "保護者氏名", "保護者連絡先", "保護者メールアドレス", "希望面談形式", "面談で話したいこと", "代替の日程希望", "NGな時間帯", "回答日時"];
+    csvRows.push(headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','));
+
+    for (const r of responses) {
+      const ngSlotsStr = (r.unavailableSlots || [])
+        .map(s => `${s.date} ${s.start}-${s.end}`)
+        .join(' | ');
+
+      const formatInterview = r.wantsZoom ? "オンライン（Zoom）面談" : "対面での面談";
+      let dateFormatted = '';
+      if (r.createdAt) {
+        try {
+          dateFormatted = format(new Date(r.createdAt), 'yyyy/MM/dd HH:mm:ss');
+        } catch (e) {
+          dateFormatted = r.createdAt;
+        }
+      }
+
+      const row = [
+        r.studentName || '',
+        r.guardianName || '',
+        r.guardianPhone || '',
+        r.parentEmail || '',
+        formatInterview,
+        r.talkTopics || '',
+        r.alternativeSchedule || '',
+        ngSlotsStr,
+        dateFormatted
+      ];
+
+      csvRows.push(row.map(val => `"${val.replace(/"/g, '""')}"`).join(','));
+    }
+
+    const csvContent = "\uFEFF" + csvRows.join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `保護者回答一覧_クラス_${classId}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // CSV Template Download
+  const handleDownloadTemplate = () => {
+    const csvRows = [];
+    const headers = ["児童・生徒名", "保護者氏名", "保護者連絡先", "保護者メールアドレス", "希望面談形式", "面談で話したいこと", "代替の日程希望", "NGな時間帯", "回答日時"];
+    csvRows.push(headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','));
+    
+    const samples = [
+      [
+        "山田 太郎",
+        "山田 花子",
+        "090-1234-5678",
+        "yamada@example.com",
+        "対面での面談",
+        "国語と算数の成績の件と、家でのスマートフォンの利用時間について相談したいです。",
+        "",
+        "2026-06-04 10:00-10:20 | 2026-06-04 10:30-10:50",
+        "2026-06-04 10:00:00"
+      ],
+      [
+        "佐藤 花子",
+        "佐藤 二郎",
+        "080-9876-5432",
+        "sato@example.com",
+        "オンライン（Zoom）面談",
+        "交友関係について。",
+        "夕方の遅い時間か、別日の午前中が助かります。",
+        "",
+        "2026-06-04 10:15:22"
+      ]
+    ];
+
+    for (const sample of samples) {
+      csvRows.push(sample.map(val => `"${val.replace(/"/g, '""')}"`).join(','));
+    }
+
+    const csvContent = "\uFEFF" + csvRows.join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `面談アンケート回答_インポート用テンプレート.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Parse CSV rows considering quotes and commas
+  const parseCSVRow = (string: string) => {
+    const arr = [];
+    let quote = false;
+    let col = '';
+    for (let i = 0; i < string.length; i++) {
+      const char = string[i];
+      if ((char === '"' || char === "'") && (i === 0 || string[i-1] !== '\\')) {
+        quote = !quote;
+      } else if (char === ',' && !quote) {
+        arr.push(col.trim());
+        col = '';
+      } else {
+        col += char;
+      }
+    }
+    arr.push(col.trim());
+    return arr;
+  };
+
+  // Main import handler
+  const parseAndUploadCSV = async (text: string) => {
+    try {
+      const lines = text.split(/\r?\n/);
+      if (lines.length < 2) {
+        alert('CSVファイルが空か、有効な形式ではありません。');
+        return;
+      }
+
+      // Read header
+      const header = lines[0].replace(/"/g, '').split(',');
+      const rows = lines.slice(1);
+
+      const colIndices = {
+        studentName: header.findIndex(h => h.includes('児童') || h.includes('生徒') || h.includes('名前')),
+        guardianName: header.findIndex(h => h.includes('保護者氏名') || h.includes('保護者名')),
+        guardianPhone: header.findIndex(h => h.includes('連絡先') || h.includes('電話')),
+        parentEmail: header.findIndex(h => h.includes('メール') || h.includes('アドレス')),
+        wantsZoom: header.findIndex(h => h.includes('形') || h.includes('面談形式') || h.includes('Zoom')),
+        talkTopics: header.findIndex(h => h.includes('話したい') || h.includes('要望') || h.includes('トピック')),
+        alternativeSchedule: header.findIndex(h => h.includes('代替') || h.includes('希望日')),
+        unavailableSlots: header.findIndex(h => h.includes('NG') || h.includes('時間帯') || h.includes('都合の悪い')),
+        createdAt: header.findIndex(h => h.includes('日時'))
+      };
+
+      // Fallbacks
+      if (colIndices.studentName === -1) colIndices.studentName = 0;
+      if (colIndices.wantsZoom === -1) colIndices.wantsZoom = 4;
+
+      let importCount = 0;
+      const batchPromises = [];
+
+      for (const row of rows) {
+        if (!row.trim()) continue;
+
+        const cols = parseCSVRow(row);
+        
+        const studentName = colIndices.studentName !== -1 && cols[colIndices.studentName] ? cols[colIndices.studentName].replace(/^["']|["']$/g, '') : '';
+        if (!studentName) continue; // Skip if no student name
+
+        const guardianName = colIndices.guardianName !== -1 && cols[colIndices.guardianName] ? cols[colIndices.guardianName].replace(/^["']|["']$/g, '') : '';
+        const guardianPhone = colIndices.guardianPhone !== -1 && cols[colIndices.guardianPhone] ? cols[colIndices.guardianPhone].replace(/^["']|["']$/g, '') : '';
+        const parentEmail = colIndices.parentEmail !== -1 && cols[colIndices.parentEmail] ? cols[colIndices.parentEmail].replace(/^["']|["']$/g, '') : '';
+        
+        const wantsZoomStr = colIndices.wantsZoom !== -1 && cols[colIndices.wantsZoom] ? cols[colIndices.wantsZoom].replace(/^["']|["']$/g, '') : '';
+        const wantsZoom = wantsZoomStr.includes('Zoom') || wantsZoomStr.includes('オンライン') || wantsZoomStr.includes('はい') || wantsZoomStr.includes('true') || wantsZoomStr.includes('💻');
+
+        const talkTopics = colIndices.talkTopics !== -1 && cols[colIndices.talkTopics] ? cols[colIndices.talkTopics].replace(/^["']|["']$/g, '') : '';
+        const alternativeSchedule = colIndices.alternativeSchedule !== -1 && cols[colIndices.alternativeSchedule] ? cols[colIndices.alternativeSchedule].replace(/^["']|["']$/g, '') : '';
+        
+        // Parse unavailable Slots (NG時間帯) "2026-06-04 10:00-10:20 | 2026-06-04 10:30-10:50"
+        const unavailableSlotsStr = colIndices.unavailableSlots !== -1 && cols[colIndices.unavailableSlots] ? cols[colIndices.unavailableSlots].replace(/^["']|["']$/g, '') : '';
+        const unavailableSlots: { date: string; start: string; end: string }[] = [];
+        
+        if (unavailableSlotsStr) {
+          const slotsParts = unavailableSlotsStr.split('|');
+          for (const item of slotsParts) {
+            const trimmedItem = item.trim();
+            const match = trimmedItem.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})-(\d{2}:\d{2})$/);
+            if (match) {
+              unavailableSlots.push({
+                date: match[1],
+                start: match[2],
+                end: match[3]
+              });
+            }
+          }
+        }
+
+        const createdAtStr = colIndices.createdAt !== -1 && cols[colIndices.createdAt] ? cols[colIndices.createdAt].replace(/^["']|["']$/g, '') : '';
+        const createdAt = createdAtStr ? new Date(createdAtStr).toISOString() : new Date().toISOString();
+
+        const responseData = {
+          studentName,
+          guardianName,
+          guardianPhone,
+          parentEmail,
+          wantsZoom,
+          talkTopics,
+          alternativeSchedule,
+          unavailableSlots,
+          createdAt
+        };
+
+        // If a response with the same student name exists, overwrite it, otherwise add new
+        const existing = responses.find(r => r.studentName.replace(/\s+/g, '') === studentName.replace(/\s+/g, ''));
+        if (existing) {
+          batchPromises.push(setDoc(doc(db, 'classes', classId, 'parentResponses', existing.id), responseData));
+        } else {
+          batchPromises.push(addDoc(collection(db, 'classes', classId, 'parentResponses'), responseData));
+        }
+        importCount++;
+      }
+
+      if (batchPromises.length > 0) {
+        await Promise.all(batchPromises);
+        alert(`CSVから【${importCount}件】の回答をインポート・更新しました。`);
+        setShowCsvBox(false);
+      } else {
+        alert('有効な児童・生徒データの行が見つかりませんでした。');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('CSVファイルのパース中にエラーが発生しました。UTF-8形式で保存されているか、フォーマットが正しいか確認してください。');
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) readFile(file);
+  };
+
+  const readFile = (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      alert('アップロードできるのはCSVファイル (.csv) のみです。');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (text) parseAndUploadCSV(text);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleDragOverFile = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeaveFile = () => {
+    setIsDragOver(false);
+  };
+
+  const handleDropFile = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) readFile(file);
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-[#E1E2E4] shadow-sm overflow-hidden">
-      <div className="px-6 py-4 border-b border-[#E1E2E4] flex items-center justify-between">
-        <h3 className="font-bold text-lg">回答状況（{responses.length}名）</h3>
+      <div className="px-6 py-4 border-b border-[#E1E2E4] flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white">
+        <h3 className="font-bold text-lg text-[#1A1C1E] flex items-center gap-2">
+          <span>回答状況（{responses.length}名）</span>
+        </h3>
+        
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg text-xs font-bold transition-all shadow-xs"
+            title="現在の回答をCSVファイルとしてダウンロードします"
+          >
+            <Download size={13} />
+            CSVダウンロード
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => setShowCsvBox(!showCsvBox)}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs border",
+              showCsvBox 
+                ? "bg-blue-50 border-blue-200 text-blue-700" 
+                : "bg-blue-600 hover:bg-blue-700 border-transparent text-white"
+            )}
+            title="CSVファイルから回答データを一括追加・更新します"
+          >
+            <Upload size={13} />
+            CSV一括インポート
+          </button>
+        </div>
       </div>
+
+      {/* CSV Import Tray Section */}
+      <AnimatePresence>
+        {showCsvBox && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden bg-blue-50/20 border-b border-[#E1E2E4]"
+          >
+            <div className="p-6">
+              <div className="flex items-start gap-2.5 text-xs text-blue-800 mb-4 bg-blue-50 border border-blue-100 p-3 rounded-lg leading-relaxed">
+                <AlertCircle size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold">💡 CSVインポートについてのヒント</p>
+                  <p>・すでにある児童・生徒名と一致するデータは、CSV側の内容で上書き（更新）されます。</p>
+                  <p>・面談形式に「Zoom」や「オンライン」が含まれる場合、自動的にZoom希望としてマークされます。</p>
+                  <p>・既存の回答が無い生徒に、あらかじめ時間枠を制限せずに（NG時間なしで）名前だけ一括登録しておく用途にもご活用いただけます。</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 rounded-xl">
+                {/* Right/Left: Explanation */}
+                <div className="md:col-span-1 border border-gray-200 bg-white p-4 rounded-xl flex flex-col justify-between">
+                  <div>
+                    <h4 className="font-bold text-xs text-[#1A1C1E] mb-2 flex items-center gap-1">
+                      <FileSpreadsheet size={14} className="text-blue-600" />
+                      1. テンプレートの用意
+                    </h4>
+                    <p className="text-[11px] text-gray-500 leading-relaxed mb-3">
+                      インポート用の推奨フォーマットが記載されたCSVテンプレートを用意しています。まず、こちらをダウンロードして内容をご記入ください。
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDownloadTemplate}
+                    className="w-full py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-bold border border-gray-300 rounded-lg flex items-center justify-center gap-1.5 transition-all shadow-xs"
+                  >
+                    <Download size={13} />
+                    テンプレートをDL
+                  </button>
+                </div>
+
+                {/* Drag and drop zone */}
+                <div className="md:col-span-2">
+                  <div
+                    onDragOver={handleDragOverFile}
+                    onDragLeave={handleDragLeaveFile}
+                    onDrop={handleDropFile}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={cn(
+                      "border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all h-full bg-white",
+                      isDragOver
+                        ? "border-blue-500 bg-blue-50/50 scale-[0.99] shadow-sm"
+                        : "border-gray-300 hover:border-gray-400 hover:bg-gray-50/30"
+                    )}
+                  >
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      accept=".csv"
+                      className="hidden"
+                    />
+                    <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-3">
+                      <Upload size={18} />
+                    </div>
+                    <p className="text-xs font-bold text-gray-700 mb-1">
+                      {isDragOver ? "ここにドロップしてアップロード" : "CSVファイルをドラッグ＆ドロップするか、クリックして選択"}
+                    </p>
+                    <p className="text-[10px] text-gray-400">対応：Excel、Googleスプレッドシート、テキストエディタ等で編集したCSV</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="overflow-x-auto">
         <table className="w-full text-left min-w-[800px]">
           <thead className="bg-[#F8F9FA] text-sm font-medium text-[#44474E]">
@@ -1614,6 +2036,26 @@ const LetterView = () => {
   );
 };
 
+const SyncDevice = () => {
+  const { teacherId } = useParams();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (teacherId) {
+      localStorage.setItem('teacher_id', teacherId);
+    }
+    navigate('/');
+  }, [teacherId, navigate]);
+
+  return (
+    <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-blue-100 p-8 shadow-sm max-w-md mx-auto my-12">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4 animate-bounce"></div>
+      <p className="text-gray-800 font-bold text-sm mb-1">データを同期しています</p>
+      <p className="text-xs text-gray-500 text-center">少々お待ちください。完了後、自動的にダッシュボードへ戻ります。</p>
+    </div>
+  );
+};
+
 export default function App() {
   return (
     <Router>
@@ -1624,6 +2066,7 @@ export default function App() {
           <Route path="/parent/:classId" element={<ParentForm />} />
           <Route path="/request-letter/:classId" element={<RequestLetterView />} />
           <Route path="/letter/:classId" element={<LetterView />} />
+          <Route path="/sync/:teacherId" element={<SyncDevice />} />
         </Routes>
       </Layout>
     </Router>
