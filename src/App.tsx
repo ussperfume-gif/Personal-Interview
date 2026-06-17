@@ -8,8 +8,6 @@ import { ja } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 
-import html2pdf from 'html2pdf.js';
-
 // --- Utils ---
 const getTeacherId = () => {
   let id = localStorage.getItem('teacher_id');
@@ -70,6 +68,91 @@ interface Schedule {
 }
 
 // --- Components ---
+
+const PdfGuideModal = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  title = "PDF保存・印刷のやり方"
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title?: string;
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 print:hidden overflow-y-auto">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        className="bg-white w-full max-w-lg rounded-2xl border border-gray-100 p-6 shadow-2xl relative"
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"
+          aria-label="閉じる"
+        >
+          <X size={20} />
+        </button>
+
+        <div className="flex items-center gap-3 mb-4 text-blue-600">
+          <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
+            <FileText size={22} className="text-blue-600 animate-pulse" />
+          </div>
+          <h3 className="font-bold text-lg text-gray-900">{title}</h3>
+        </div>
+
+        <div className="space-y-4 mb-6">
+          <p className="text-sm text-[#44474E] leading-relaxed">
+            お使いのブラウザやセキュリティ制限の影響を受けず、<strong>100%確実かつ高画質な（文字のコピーや拡大が綺麗でボケない）PDFファイル</strong>を保存する手順です。
+          </p>
+
+          <div className="bg-amber-50/70 border border-amber-100 rounded-xl p-4 text-xs text-amber-900 leading-relaxed space-y-2">
+            <div className="flex gap-2 font-bold mb-1 items-center">
+              <span>💡</span>
+              <span>2ステップで完了：</span>
+            </div>
+            <ol className="list-decimal list-inside space-y-1.5 pl-1">
+              <li>
+                下の <span className="font-bold text-blue-700">「印刷・PDF保存画面を開く」</span> ボタンを押します。
+              </li>
+              <li>
+                直後に表示される印刷メニューの面（送信先やプリンターなどの項目）で、<span className="font-bold text-amber-800 bg-amber-100/50 px-1 py-0.5 rounded">「PDFとして保存」</span> もしくは <span className="font-bold text-amber-800 bg-amber-100/50 px-1 py-0.5 rounded">「PDFを保存」</span> を選択して決定します。
+              </li>
+            </ol>
+          </div>
+
+          <div className="text-[11px] text-gray-500 bg-gray-50 p-2.5 rounded-lg border border-gray-100 leading-relaxed space-y-1">
+            <p>※ 印刷設定の用紙サイズは<strong>「A4 (縦)」</strong>、倍率は<strong>「100%（デフォルト）」</strong>が最適です。</p>
+            <p>※ 「詳細設定」内の<strong>「ヘッダーとフッター」のチェックを外す</strong>と、ページ上部の日時や下部のURLなどの不要な表示が消え、お便りだけが本当に綺麗に保存できます。</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+          >
+            キャンセル
+          </button>
+          <button
+            onClick={() => {
+              onConfirm();
+              onClose();
+            }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-all shadow-md active:scale-95"
+          >
+            <Printer size={16} />
+            印刷・PDF保存画面を開く
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
@@ -1759,6 +1842,7 @@ const RequestLetterView = () => {
   const navigate = useNavigate();
   const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
   const [availabilities, setAvailabilities] = useState<TeacherAvailability[]>([]);
+  const [showPdfGuide, setShowPdfGuide] = useState(false);
 
   useEffect(() => {
     if (!classId) return;
@@ -1773,32 +1857,7 @@ const RequestLetterView = () => {
   }, [classId]);
 
   const handleSavePdf = () => {
-    try {
-      const element = document.getElementById('letter-content');
-      if (!element) return;
-      
-      const opt = {
-        margin: 10,
-        filename: `面談回答依頼_${classInfo?.name || ''}.pdf`,
-        image: { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
-      };
-
-      const exporter = typeof html2pdf === 'function' ? html2pdf : (html2pdf as any)?.default;
-      
-      if (!exporter) {
-        throw new Error('PDF library format not supported directly / html2pdf function not found');
-      }
-
-      exporter().set(opt).from(element).save();
-    } catch (err) {
-      console.error('PDF export failed:', err);
-      alert(
-        "【お知らせ】\nお探しのブラウザやセキュリティ制約（アイフレーム環境など）のため、PDFファイルの直接生成に失敗した、もしくは制限されています。\n\nですが、ご安心ください！\n「印刷」ボタンを押して送信先（プリンター）で「PDFとして保存」を選択していただくと、こちらよりも綺麗でコピー可能な高音質なPDFとして100%確実に保存できます。\n\nこれから印刷（PDF保存）ダイアログを開きますのでそちらをお試しください。"
-      );
-      window.print();
-    }
+    setShowPdfGuide(true);
   };
 
   if (!classInfo) return <div className="text-center py-20">読み込み中...</div>;
@@ -1927,6 +1986,12 @@ const RequestLetterView = () => {
           <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">※インターネット環境がない場合は、連絡帳等にてお知らせください。</p>
         </div>
       </div>
+      <PdfGuideModal 
+        isOpen={showPdfGuide} 
+        onClose={() => setShowPdfGuide(false)} 
+        onConfirm={() => window.print()} 
+        title="回答依頼のお手紙をPDFで保存・印刷する" 
+      />
     </div>
   );
 };
@@ -1936,6 +2001,7 @@ const LetterView = () => {
   const navigate = useNavigate();
   const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
   const [schedule, setSchedule] = useState<Schedule | null>(null);
+  const [showPdfGuide, setShowPdfGuide] = useState(false);
 
   useEffect(() => {
     if (!classId) return;
@@ -1948,32 +2014,7 @@ const LetterView = () => {
   }, [classId]);
 
   const handleSavePdf = () => {
-    try {
-      const element = document.getElementById('schedule-letter-content');
-      if (!element) return;
-      
-      const opt = {
-        margin: 10,
-        filename: `面談日程お知らせ_${classInfo?.name || ''}.pdf`,
-        image: { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
-      };
-
-      const exporter = typeof html2pdf === 'function' ? html2pdf : (html2pdf as any)?.default;
-      
-      if (!exporter) {
-        throw new Error('PDF library format not supported directly / html2pdf function not found');
-      }
-
-      exporter().set(opt).from(element).save();
-    } catch (err) {
-      console.error('PDF export failed:', err);
-      alert(
-        "【お知らせ】\nお探しのブラウザやセキュリティ制約（アイフレーム環境など）のため、PDFファイルの直接生成に失敗した、もしくは制限されています。\n\nですが、ご安心ください！\n「印刷」ボタンを押して送信先（プリンター）で「PDFとして保存」を選択していただくと、こちらよりも綺麗でコピー可能な高音質なPDFとして100%確実に保存できます。\n\nこれから印刷（PDF保存）ダイアログを開きますのでそちらをお試しください。"
-      );
-      window.print();
-    }
+    setShowPdfGuide(true);
   };
 
   if (!classInfo || !schedule) return <div className="text-center py-20">読み込み中...</div>;
@@ -2060,6 +2101,12 @@ const LetterView = () => {
           <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">※面談場所は各教室となります。</p>
         </div>
       </div>
+      <PdfGuideModal 
+        isOpen={showPdfGuide} 
+        onClose={() => setShowPdfGuide(false)} 
+        onConfirm={() => window.print()} 
+        title="決定通知のお便りをPDFで保存・印刷する" 
+      />
     </div>
   );
 };
