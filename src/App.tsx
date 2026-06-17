@@ -1565,28 +1565,70 @@ const ParentForm = () => {
   const { classId } = useParams();
   const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
   const [availabilities, setAvailabilities] = useState<TeacherAvailability[]>([]);
-  const [studentName, setStudentName] = useState(() => localStorage.getItem(`draft_student_name_${classId}`) || '');
+  const [studentName, setStudentName] = useState(() => {
+    try {
+      return localStorage.getItem(`draft_student_name_${classId}`) || '';
+    } catch {
+      return '';
+    }
+  });
   const [guardianPhone, setGuardianPhone] = useState('');
   const [ngSlots, setNgSlots] = useState<{ date: string; start: string; end: string }[]>([]);
   const [talkTopics, setTalkTopics] = useState('');
   const [alternativeSchedule, setAlternativeSchedule] = useState('');
   const [wantsZoom, setWantsZoom] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (classId) localStorage.setItem(`draft_student_name_${classId}`, studentName);
+    if (classId) {
+      try {
+        localStorage.setItem(`draft_student_name_${classId}`, studentName);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
   }, [studentName, classId]);
 
   useEffect(() => {
-    if (!classId) return;
-    getDoc(doc(db, 'classes', classId)).then(docSnap => {
-      if (docSnap.exists()) setClassInfo({ id: docSnap.id, ...docSnap.data() } as ClassInfo);
-    });
-    const q = collection(db, 'classes', classId, 'teacherAvailability');
-    getDocs(q).then(snapshot => {
-      const list = snapshot.docs.map(doc => doc.data() as TeacherAvailability);
-      setAvailabilities(list.sort((a, b) => a.date.localeCompare(b.date)));
-    });
+    if (!classId) {
+      setError("面談URLが無効です（クラスIDがありません）。URLを再度ご確認ください。");
+      setIsLoading(false);
+      return;
+    }
+
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const docRef = doc(db, 'classes', classId);
+        const docSnap = await getDoc(docRef);
+
+        if (!docSnap.exists()) {
+          setError("指定されたクラス（面談URL）が見て取れません。担任の先生から送られたURLが正しいか、またはすでにクラスが削除されていないかご確認ください。");
+          setIsLoading(false);
+          return;
+        }
+
+        const info = { id: docSnap.id, ...docSnap.data() } as ClassInfo;
+        setClassInfo(info);
+
+        const q = collection(db, 'classes', classId, 'teacherAvailability');
+        const snapshot = await getDocs(q);
+        const list = snapshot.docs.map(doc => doc.data() as TeacherAvailability);
+        setAvailabilities(list.sort((a, b) => a.date.localeCompare(b.date)));
+
+        setIsLoading(false);
+      } catch (err: any) {
+        console.error("Firestore loading error inside ParentForm:", err);
+        setError(`データの読み込み中にエラーが発生しました。\nネットワーク接続を確認するか、しばらく経ってから再度お試しください。\n（開発者向けエラー情報: ${err?.message || err}）`);
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
   }, [classId]);
 
   const toggleNg = (date: string, start: string, end: string) => {
@@ -1665,7 +1707,45 @@ const ParentForm = () => {
     );
   }
 
-  if (!classInfo) return <div className="text-center py-20">読み込み中...</div>;
+  if (isLoading) {
+    return (
+      <div className="max-w-md mx-auto py-20 text-center space-y-4">
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+        <div className="text-[#1A1C1E] font-medium text-lg">面談調整アンケートを読み込み中...</div>
+        <p className="text-sm text-gray-500">データを取得しています。しばらくお待ちください。</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-xl mx-auto py-16 px-4">
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6 md:p-8 text-center shadow-xs">
+          <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertCircle size={32} />
+          </div>
+          <h2 className="text-xl font-bold text-red-900 mb-3">読み込みエラー</h2>
+          <p className="text-red-700 text-sm whitespace-pre-wrap leading-relaxed text-left max-w-sm mx-auto mb-6">
+            {error}
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm transition-colors shadow-sm"
+          >
+            ページを再読み込みする
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!classInfo) {
+    return (
+      <div className="max-w-xl mx-auto py-16 px-4 text-center">
+        <p className="text-gray-500">学級データが見つかりません。</p>
+      </div>
+    );
+  }
 
   const allSlotsCount = availabilities.reduce((acc, curr) => acc + curr.slots.filter(s => s.isAvailable).length, 0);
   const isAllNg = ngSlots.length === allSlotsCount && allSlotsCount > 0;
