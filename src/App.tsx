@@ -76,8 +76,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const isParentView = location.pathname.includes('/parent/');
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] text-[#1A1C1E] font-sans">
-      <header className="bg-white border-b border-[#E1E2E4] sticky top-0 z-50">
+    <div className="min-h-screen bg-[#F8F9FA] text-[#1A1C1E] font-sans print:bg-white print:min-h-0">
+      <header className="bg-white border-b border-[#E1E2E4] sticky top-0 z-50 print:hidden">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           {isParentView ? (
             <div className="flex items-center gap-2 select-none">
@@ -100,7 +100,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           </div>
         </div>
       </header>
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main className="max-w-7xl mx-auto px-4 py-8 print:p-0 print:max-w-none">
         {children}
       </main>
     </div>
@@ -1773,18 +1773,32 @@ const RequestLetterView = () => {
   }, [classId]);
 
   const handleSavePdf = () => {
-    const element = document.getElementById('letter-content');
-    if (!element) return;
-    
-    const opt = {
-      margin: 10,
-      filename: `面談回答依頼_${classInfo?.name || ''}.pdf`,
-      image: { type: 'jpeg' as const, quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
-    };
+    try {
+      const element = document.getElementById('letter-content');
+      if (!element) return;
+      
+      const opt = {
+        margin: 10,
+        filename: `面談回答依頼_${classInfo?.name || ''}.pdf`,
+        image: { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
+      };
 
-    html2pdf().set(opt).from(element).save();
+      const exporter = typeof html2pdf === 'function' ? html2pdf : (html2pdf as any)?.default;
+      
+      if (!exporter) {
+        throw new Error('PDF library format not supported directly / html2pdf function not found');
+      }
+
+      exporter().set(opt).from(element).save();
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      alert(
+        "【お知らせ】\nお探しのブラウザやセキュリティ制約（アイフレーム環境など）のため、PDFファイルの直接生成に失敗した、もしくは制限されています。\n\nですが、ご安心ください！\n「印刷」ボタンを押して送信先（プリンター）で「PDFとして保存」を選択していただくと、こちらよりも綺麗でコピー可能な高音質なPDFとして100%確実に保存できます。\n\nこれから印刷（PDF保存）ダイアログを開きますのでそちらをお試しください。"
+      );
+      window.print();
+    }
   };
 
   if (!classInfo) return <div className="text-center py-20">読み込み中...</div>;
@@ -1792,7 +1806,7 @@ const RequestLetterView = () => {
   const parentUrl = `${window.location.origin}/#/parent/${classId}`;
 
   return (
-    <div className="max-w-4xl mx-auto py-8">
+    <div className="max-w-4xl mx-auto py-8 print:p-0 print:py-0 print:max-w-none">
       {window.location.origin.includes('-dev-') && (
         <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800 font-medium print:hidden">
           ⚠️ 現在「開発用URL」で手紙を作成しています。このまま配布すると保護者の端末でエラー（403）が表示されます。
@@ -1934,24 +1948,38 @@ const LetterView = () => {
   }, [classId]);
 
   const handleSavePdf = () => {
-    const element = document.getElementById('schedule-letter-content');
-    if (!element) return;
-    
-    const opt = {
-      margin: 10,
-      filename: `面談日程お知らせ_${classInfo?.name || ''}.pdf`,
-      image: { type: 'jpeg' as const, quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
-    };
+    try {
+      const element = document.getElementById('schedule-letter-content');
+      if (!element) return;
+      
+      const opt = {
+        margin: 10,
+        filename: `面談日程お知らせ_${classInfo?.name || ''}.pdf`,
+        image: { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
+      };
 
-    html2pdf().set(opt).from(element).save();
+      const exporter = typeof html2pdf === 'function' ? html2pdf : (html2pdf as any)?.default;
+      
+      if (!exporter) {
+        throw new Error('PDF library format not supported directly / html2pdf function not found');
+      }
+
+      exporter().set(opt).from(element).save();
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      alert(
+        "【お知らせ】\nお探しのブラウザやセキュリティ制約（アイフレーム環境など）のため、PDFファイルの直接生成に失敗した、もしくは制限されています。\n\nですが、ご安心ください！\n「印刷」ボタンを押して送信先（プリンター）で「PDFとして保存」を選択していただくと、こちらよりも綺麗でコピー可能な高音質なPDFとして100%確実に保存できます。\n\nこれから印刷（PDF保存）ダイアログを開きますのでそちらをお試しください。"
+      );
+      window.print();
+    }
   };
 
   if (!classInfo || !schedule) return <div className="text-center py-20">読み込み中...</div>;
 
   return (
-    <div className="max-w-4xl mx-auto py-8">
+    <div className="max-w-4xl mx-auto py-8 print:p-0 print:py-0 print:max-w-none">
       <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800 flex items-start gap-2.5 print:hidden shadow-sm">
         <span className="text-lg">💡</span>
         <div>
