@@ -198,6 +198,10 @@ const TeacherDashboard = () => {
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [newClassName, setNewClassName] = useState(() => localStorage.getItem('draft_class_name') || '');
   const [loading, setLoading] = useState(true);
+  const [schoolName, setSchoolName] = useState('');
+  const [deadline, setDeadline] = useState('');
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const teacherId = getTeacherId();
 
   useEffect(() => {
@@ -214,13 +218,75 @@ const TeacherDashboard = () => {
     return unsubscribe;
   }, [teacherId]);
 
+  useEffect(() => {
+    if (!teacherId) return;
+    
+    const fetchSettings = async () => {
+      try {
+        const docSnap = await getDoc(doc(db, 'teachers', teacherId));
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setSchoolName(data.schoolName || '');
+          setDeadline(data.deadline || '');
+        } else {
+          // Fallback to migrating from existing classes if any
+          const q = query(collection(db, 'classes'), where('teacherId', '==', teacherId));
+          const snap = await getDocs(q);
+          const list = snap.docs.map(doc => doc.data() as ClassInfo);
+          const classWithSchool = list.find(c => c.schoolName || c.deadline);
+          if (classWithSchool) {
+            setSchoolName(classWithSchool.schoolName || '');
+            setDeadline(classWithSchool.deadline || '');
+          }
+        }
+      } catch (e) {
+        console.error("Error fetching teacher settings:", e);
+      }
+    };
+    
+    fetchSettings();
+  }, [teacherId]);
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingSettings(true);
+    try {
+      // 1. Save in teachers common document
+      await setDoc(doc(db, 'teachers', teacherId), {
+        schoolName,
+        deadline
+      }, { merge: true });
+
+      // 2. Get all classes of this teacher and update them
+      const q = query(collection(db, 'classes'), where('teacherId', '==', teacherId));
+      const snap = await getDocs(q);
+      const updatePromises = snap.docs.map(docSnap => {
+        return updateDoc(doc(db, 'classes', docSnap.id), {
+          schoolName,
+          deadline
+        });
+      });
+      await Promise.all(updatePromises);
+
+      setShowSaveSuccess(true);
+      setTimeout(() => setShowSaveSuccess(false), 3000);
+    } catch (err) {
+      console.error(err);
+      alert('共通設定の保存に失敗しました。');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   const handleCreateClass = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClassName.trim()) return;
     await addDoc(collection(db, 'classes'), {
       name: newClassName,
       teacherId: teacherId,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      schoolName,
+      deadline
     });
     setNewClassName('');
     localStorage.removeItem('draft_class_name');
@@ -235,25 +301,74 @@ const TeacherDashboard = () => {
   if (loading) return <div className="flex justify-center py-20">読み込み中...</div>;
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <h2 className="text-2xl font-bold">担当クラス一覧</h2>
-        <form onSubmit={handleCreateClass} className="flex gap-2">
+    <div className="max-w-4xl mx-auto px-4 md:px-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900">担当クラス一覧</h2>
+        <form onSubmit={handleCreateClass} className="flex gap-2 w-full sm:w-auto">
           <input
             type="text"
             value={newClassName}
             onChange={(e) => setNewClassName(e.target.value)}
             placeholder="クラス名（例：1年A組）"
-            className="px-4 py-2 border border-[#E1E2E4] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className="flex-1 sm:flex-initial px-4 py-2 border border-[#E1E2E4] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
           />
           <button
             type="submit"
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors text-sm shrink-0 shadow-xs"
           >
             <Plus size={18} />
             追加
           </button>
         </form>
+      </div>
+
+      {/* 共通設定カード */}
+      <div className="bg-white p-5 md:p-6 rounded-2xl border border-blue-200/80 shadow-xs mb-8">
+        <div className="flex items-center gap-2 mb-4 text-slate-800">
+          <span className="text-lg">🏫</span>
+          <h3 className="font-bold text-base md:text-lg">全クラス共通の設定（学校名・締め切り）</h3>
+        </div>
+
+        <form onSubmit={handleSaveSettings} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1">共通の学校名</label>
+            <input
+              type="text"
+              value={schoolName}
+              onChange={(e) => setSchoolName(e.target.value)}
+              placeholder="例：○○市立○○小学校"
+              className="w-full px-3 py-2 border border-[#E1E2E4] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1">共通の回答期限</label>
+            <input
+              type="date"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+              className="w-full px-3 py-2 border border-[#E1E2E4] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+            />
+          </div>
+          <div className="flex flex-col sm:flex-row md:flex-col lg:flex-row items-stretch sm:items-center md:items-stretch lg:items-center gap-2">
+            <button
+              type="submit"
+              disabled={isSavingSettings}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-950 disabled:bg-slate-300 text-white rounded-lg font-bold transition-all text-sm shadow-xs"
+            >
+              <Save size={16} />
+              {isSavingSettings ? '保存中...' : '設定を同期・保存'}
+            </button>
+            {showSaveSuccess && (
+              <span className="text-xs font-bold text-green-700 bg-green-50 border border-green-100 px-2.5 py-1.5 rounded-lg animate-fade-in flex items-center justify-center gap-1">
+                <Check size={14} />
+                同期完了
+              </span>
+            )}
+          </div>
+        </form>
+        <p className="text-[11px] text-gray-400 mt-2.5 leading-relaxed">
+          ※ここで保存した値は、現在登録されている<b>すべてのクラス</b>、および<b>今後追加する新規クラス</b>に自動で適用されます。
+        </p>
       </div>
 
       <div className="grid gap-4">
