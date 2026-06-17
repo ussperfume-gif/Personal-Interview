@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { collection, doc, getDoc, getDocs, setDoc, addDoc, query, where, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import { Calendar, Users, FileText, Settings, LogIn, LogOut, Plus, Trash2, Check, X, ChevronRight, Printer, Clock, Save, GripVertical, Download, Upload, FileSpreadsheet, AlertCircle } from 'lucide-react';
+import { Calendar, Users, FileText, Settings, LogIn, LogOut, Plus, Trash2, Check, X, ChevronRight, Copy, Printer, Clock, Save, GripVertical, Download, Upload, FileSpreadsheet, AlertCircle } from 'lucide-react';
 import { format, addMinutes, parse, isAfter, isBefore, isEqual, startOfDay } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
@@ -1842,7 +1842,8 @@ const RequestLetterView = () => {
   const navigate = useNavigate();
   const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
   const [availabilities, setAvailabilities] = useState<TeacherAvailability[]>([]);
-  const [showPdfGuide, setShowPdfGuide] = useState(false);
+  const [messageText, setMessageText] = useState("");
+  const [isCopied, setIsCopied] = useState(false);
 
   useEffect(() => {
     if (!classId) return;
@@ -1856,142 +1857,157 @@ const RequestLetterView = () => {
     });
   }, [classId]);
 
-  const handleSavePdf = () => {
-    setShowPdfGuide(true);
+  useEffect(() => {
+    if (!classInfo) return;
+
+    const datesText = availabilities.length > 0 
+      ? availabilities.map(avail => {
+          const formattedDate = format(parse(avail.date, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja });
+          const start = avail.slots[0]?.start || '';
+          const end = avail.slots[avail.slots.length - 1]?.end || '';
+          return `・${formattedDate} ${start} ～ ${end}`;
+        }).join('\n')
+      : '・（面談日時が未登録です。管理画面からご設定ください）';
+
+    const deadlineText = classInfo.deadline 
+      ? format(parse(classInfo.deadline, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja })
+      : '（未設定）';
+
+    const parentUrl = `${window.location.origin}/#/parent/${classId}`;
+
+    const text = `【${classInfo.name}】個人面談の実施について
+
+保護者の皆様
+
+いつも学校の教育活動にご理解とご協力をいただき、誠にありがとうございます。
+${classInfo.name} 担任の ${classInfo.teacherName || '（担任名）'} です。
+
+今年度も下記の日程にて個人面談を実施いたします。
+つきましては、日程調整のため、大変お手数ですが以下の回答方法URLよりアクセスし、ご都合の悪い時間帯（面談ができない日時）のご選択をお願いいたします。
+
+記
+
+1. 実施日時
+${datesText}
+
+2. 回答方法（回答用URL）
+以下のURLへ直接アクセスし、期日までに回答アンケートにご回答ください。（QRコードは不要です）
+${parentUrl}
+
+3. 回答期限
+${deadlineText}まで
+
+※日程確定後は、決定スケジュールを別途お知らせいたします。
+※インターネット環境がない場合は、お手数ですが連絡帳等にてその旨をお知らせください。`;
+
+    setMessageText(text);
+  }, [classInfo, availabilities, classId]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(messageText).then(() => {
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    });
   };
 
   if (!classInfo) return <div className="text-center py-20">読み込み中...</div>;
 
-  const parentUrl = `${window.location.origin}/#/parent/${classId}`;
-
   return (
-    <div className="max-w-4xl mx-auto py-8 print:p-0 print:py-0 print:max-w-none">
+    <div className="max-w-4xl mx-auto py-8 px-4 print:p-0">
       {window.location.origin.includes('-dev-') && (
-        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800 font-medium print:hidden">
-          ⚠️ 現在「開発用URL」で手紙を作成しています。このまま配布すると保護者の端末でエラー（403）が表示されます。
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800 font-medium print:hidden shadow-xs">
+          ⚠️ 現在「開発用URL」でメッセージを作成しています。このまま配布すると保護者の端末でエラー（403）が表示されます。
           <br />
-          右上の「共有」ボタンから発行される「公開用URL（-pre-で始まるURL）」の管理画面からお手紙を作成してください。
+          右上の「共有」ボタンから発行される「公開用URL（-pre-で始まるURL）」の管理画面からURLを発行・コピーしてください。
         </div>
       )}
-      
-      <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800 flex items-start gap-2.5 print:hidden shadow-sm">
-        <span className="text-lg">💡</span>
-        <div>
-          <p className="font-bold mb-0.5">手紙の内容をお好みに合わせてその場で直接編集できます</p>
-          <p className="text-xs text-blue-700">お名前、学校名、タイトル、本文、注意書きなど、手紙の任意の文字をクリックするとキーボード操作で自由に書き換えることができます。編集内容は印刷やPDF保存にそのまま反映されます。（日時や動的なリンクURLは変更しないでください）</p>
-        </div>
-      </div>
 
-      <div className="flex items-center justify-between mb-8 print:hidden">
-        <button
-          onClick={() => navigate(`/teacher/class/${classId}`)}
-          className="flex items-center gap-2 px-4 py-2 text-[#44474E] hover:bg-gray-100 rounded-lg transition-colors font-medium"
-        >
-          <X size={18} />
-          管理画面に戻る
-        </button>
-        <div className="flex gap-3">
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-blue-200 text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition-colors"
-          >
-            <Printer size={18} />
-            印刷
-          </button>
-          <button
-            onClick={handleSavePdf}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm"
-          >
-            <FileText size={18} />
-            PDFで保存
-          </button>
-        </div>
-      </div>
-
-      <div id="letter-content" className="bg-white p-12 shadow-lg min-h-[297mm] print:shadow-none print:p-0">
-        <div className="text-right mb-8">
-          <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded inline-block cursor-text hover:border-b hover:border-gray-300 min-w-[120px] transition-colors">{format(new Date(), 'yyyy年M月d日')}</p>
-        </div>
-
-        <div className="mb-12">
-          <p contentEditable suppressContentEditableWarning className="text-lg outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">保護者 各位</p>
-          <p contentEditable suppressContentEditableWarning className="text-right outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">{classInfo.schoolName || '（学校名）'}</p>
-          <p contentEditable suppressContentEditableWarning className="text-right outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">{classInfo.name} 担任 {classInfo.teacherName ? `${classInfo.teacherName}` : '（氏名）'}</p>
-        </div>
-
-        <h1 contentEditable suppressContentEditableWarning className="text-2xl font-bold text-center mb-12 underline underline-offset-8 outline-none focus:bg-blue-50/50 p-2 rounded cursor-text hover:border hover:border-gray-300 transition-colors">個人面談の実施について（お願い）</h1>
-
-        <p contentEditable suppressContentEditableWarning className="mb-8 leading-relaxed outline-none focus:bg-blue-50/50 p-2 rounded cursor-text hover:border hover:border-gray-300 transition-colors">
-          拝啓 時下ますますご清祥のこととお慶び申し上げます。日頃より本校の教育活動にご理解とご協力をいただき、厚く御礼申し上げます。<br />
-          さて、本年度も下記の日程にて個人面談を実施いたします。つきましては、日程調整のため、ご都合の悪い（面談ができない）時間帯を以下のアンケートよりご回答くださいますようお願い申し上げます。
-        </p>
-
-        <div className="border-2 border-black p-8 mb-8">
-          <p contentEditable suppressContentEditableWarning className="text-center font-bold mb-6 text-xl outline-none focus:bg-blue-50/50 p-1 rounded cursor-text transition-colors">記</p>
-          <div className="space-y-4 mb-8">
-            <p className="font-bold">1. 実施日時</p>
-            <div className="pl-4 space-y-1">
-              {availabilities.map((avail, i) => (
-                <p key={i}>
-                  {format(parse(avail.date, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja })}
-                  {' '}
-                  {avail.slots[0].start} ～ {avail.slots[avail.slots.length - 1].end}
-                </p>
-              ))}
-            </div>
-            
-            <p className="font-bold">2. 回答方法</p>
-            <div className="pl-4">
-              <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">以下のURL、または右記のQRコードよりアクセスし、ご回答ください。</p>
-              <div className="mt-4 flex flex-col md:flex-row items-center justify-between gap-6">
-                <div className="flex-1 w-full">
-                  <div className="p-4 bg-gray-50 border border-gray-200 rounded break-all font-mono text-sm shadow-sm hover:border-blue-300 transition-colors">
-                    <a 
-                      href={parentUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
-                      className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
-                      title="保護者用回答アンケート画面（別タブで開く）"
-                    >
-                      <span>{parentUrl}</span>
-                    </a>
-                  </div>
-                </div>
-                <div className="flex flex-col items-center p-2.5 border border-gray-200 rounded-lg bg-white shadow-sm flex-shrink-0 w-[140px]">
-                  <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(parentUrl)}`} 
-                    alt="QR Code" 
-                    className="w-[110px] h-[110px]"
-                    referrerPolicy="no-referrer"
-                  />
-                  <span className="text-[10px] text-gray-500 mt-1 font-sans font-medium">スマホ回答用のQRコード</span>
-                </div>
-              </div>
-            </div>
-            
-            <p className="font-bold">3. 回答期限</p>
-            <div className="pl-4">
-              <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">
-                {classInfo.deadline 
-                  ? format(parse(classInfo.deadline, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja })
-                  : '（月） （日）'}
-                まで
-              </p>
-            </div>
+      {/* 案内ヘッダー */}
+      <div className="mb-6 p-5 bg-blue-50/70 border border-blue-200 rounded-xl text-sm text-blue-900 print:hidden shadow-sm">
+        <div className="flex items-start gap-3">
+          <span className="text-xl">📢</span>
+          <div className="space-y-1">
+            <h3 className="font-bold">配信用お便りテキスト作成</h3>
+            <p className="text-xs text-blue-700 leading-relaxed">
+              PDFや印刷の制約をなくし、そのまま連絡システムやメール、LINEへペースト（貼り付け）できるコピペ専用ボードへとリニューアルしました！<br />
+              以下の入力枠内の日本語テキストは、<b>キーボードで、いつでも自由に追記・変更</b>できます。調整完了後、お好きな箇所の「文章をコピーする」ボタンを押すと、一発でクリップボードへ保存されます。
+            </p>
           </div>
         </div>
+      </div>
 
-        <div className="mt-12 text-sm text-gray-600 space-y-1">
-          <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">※日程が確定しましたら、後日改めてお知らせいたします。</p>
-          <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">※インターネット環境がない場合は、連絡帳等にてお知らせください。</p>
+      <div className="flex items-center justify-between mb-6 print:hidden">
+        <button
+          onClick={() => navigate(`/teacher/class/${classId}`)}
+          className="flex items-center gap-2 px-4 py-2 text-[#44474E] hover:bg-gray-100 rounded-lg transition-colors font-medium text-sm"
+        >
+          <ChevronRight size={18} className="rotate-180" />
+          クラス管理画面に戻る
+        </button>
+
+        <button
+          onClick={handleCopy}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all hover:shadow-md active:scale-95 ${
+            isCopied 
+              ? "bg-green-600 hover:bg-green-700 text-white" 
+              : "bg-blue-600 hover:bg-blue-700 text-white animate-pulse"
+          }`}
+        >
+          {isCopied ? (
+            <>
+              <Check size={18} />
+              コピー完了！
+            </>
+          ) : (
+            <>
+              <Copy size={18} />
+              文章をコピーする
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* 本文エリア */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-lg p-6 md:p-8">
+        <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+          <span className="text-xs font-bold text-gray-400 tracking-wider">PREVIEW & EDIT</span>
+          {isCopied && (
+            <span className="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-full animate-fade-in">
+              配布メッセージを保存しました
+            </span>
+          )}
+        </div>
+
+        <textarea
+          value={messageText}
+          onChange={(e) => setMessageText(e.target.value)}
+          className="w-full h-[600px] p-6 bg-gray-50/50 hover:bg-gray-50 focus:bg-white border-2 border-slate-200 hover:border-slate-300 focus:border-blue-500 rounded-xl focus:ring-4 focus:ring-blue-100 focus:outline-none text-gray-800 text-[14px] leading-relaxed font-sans transition-all resize-y shadow-inner-sm"
+          placeholder="ここに入力・編集されたメッセージがコピーされます。"
+        />
+
+        <div className="mt-6 flex justify-end gap-3 print:hidden">
+          <button
+            onClick={handleCopy}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all shadow-md active:scale-95 w-full md:w-auto justify-center ${
+              isCopied 
+                ? "bg-green-600 hover:bg-green-700 text-white ring-4 ring-green-100" 
+                : "bg-blue-600 hover:bg-blue-700 text-white ring-4 ring-blue-100"
+            }`}
+          >
+            {isCopied ? (
+              <>
+                <Check size={18} />
+                コピーに成功しました！このまま配信できます
+              </>
+            ) : (
+              <>
+                <Copy size={18} />
+                この編集内容で文章をコピーする
+              </>
+            )}
+          </button>
         </div>
       </div>
-      <PdfGuideModal 
-        isOpen={showPdfGuide} 
-        onClose={() => setShowPdfGuide(false)} 
-        onConfirm={() => window.print()} 
-        title="回答依頼のお手紙をPDFで保存・印刷する" 
-      />
     </div>
   );
 };
