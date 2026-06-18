@@ -237,7 +237,9 @@ const TeacherDashboard = () => {
   useEffect(() => {
     const q = query(collection(db, 'classes'), where('teacherId', '==', teacherId));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ClassInfo));
+      const list = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as ClassInfo))
+        .filter(c => !c.id.startsWith('settings_'));
       setClasses(list);
       setLoading(false);
     });
@@ -249,7 +251,7 @@ const TeacherDashboard = () => {
     
     const fetchSettings = async () => {
       try {
-        const docSnap = await getDoc(doc(db, 'teachers', teacherId));
+        const docSnap = await getDoc(doc(db, 'classes', 'settings_' + teacherId));
         if (docSnap.exists()) {
           const data = docSnap.data();
           setSchoolName(data.schoolName || '');
@@ -258,7 +260,9 @@ const TeacherDashboard = () => {
           // Fallback to migrating from existing classes if any
           const q = query(collection(db, 'classes'), where('teacherId', '==', teacherId));
           const snap = await getDocs(q);
-          const list = snap.docs.map(doc => doc.data() as ClassInfo);
+          const list = snap.docs
+            .map(doc => ({ id: doc.id, ...doc.data() } as ClassInfo))
+            .filter(c => !c.id.startsWith('settings_'));
           const classWithSchool = list.find(c => c.schoolName || c.deadline);
           if (classWithSchool) {
             setSchoolName(classWithSchool.schoolName || '');
@@ -277,8 +281,8 @@ const TeacherDashboard = () => {
     e.preventDefault();
     setIsSavingSettings(true);
     try {
-      // 1. Save in teachers common document
-      await setDoc(doc(db, 'teachers', teacherId), {
+      // 1. Save in a virtual settings document under the classes collection
+      await setDoc(doc(db, 'classes', 'settings_' + teacherId), {
         schoolName,
         deadline
       }, { merge: true });
@@ -286,12 +290,14 @@ const TeacherDashboard = () => {
       // 2. Get all classes of this teacher and update them
       const q = query(collection(db, 'classes'), where('teacherId', '==', teacherId));
       const snap = await getDocs(q);
-      const updatePromises = snap.docs.map(docSnap => {
-        return updateDoc(doc(db, 'classes', docSnap.id), {
-          schoolName,
-          deadline
+      const updatePromises = snap.docs
+        .filter(docSnap => !docSnap.id.startsWith('settings_'))
+        .map(docSnap => {
+          return updateDoc(doc(db, 'classes', docSnap.id), {
+            schoolName,
+            deadline
+          });
         });
-      });
       await Promise.all(updatePromises);
 
       setShowSaveSuccess(true);
@@ -1324,11 +1330,13 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
   useEffect(() => {
     const fetchAllData = async () => {
       const classesSnap = await getDocs(collection(db, 'classes'));
-      const classIds = classesSnap.docs.map(d => d.id);
+      const classIds = classesSnap.docs.map(d => d.id).filter(id => !id.startsWith('settings_'));
       
       const infoMap: { [classId: string]: ClassInfo } = {};
       classesSnap.docs.forEach(d => {
-        infoMap[d.id] = d.data() as ClassInfo;
+        if (!d.id.startsWith('settings_')) {
+          infoMap[d.id] = d.data() as ClassInfo;
+        }
       });
       setAllClassesInfo(infoMap);
 
