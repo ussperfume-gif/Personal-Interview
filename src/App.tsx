@@ -9,11 +9,37 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 
 // --- Utils ---
+const memoryStorage: Record<string, string> = {};
+
+const safeStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      return memoryStorage[key] || null;
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      memoryStorage[key] = value;
+    }
+  },
+  removeItem: (key: string): void => {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      delete memoryStorage[key];
+    }
+  }
+};
+
 const getTeacherId = () => {
-  let id = localStorage.getItem('teacher_id');
+  let id = safeStorage.getItem('teacher_id');
   if (!id) {
     id = 't_' + Math.random().toString(36).substring(2, 15);
-    localStorage.setItem('teacher_id', id);
+    safeStorage.setItem('teacher_id', id);
   }
   return id;
 };
@@ -196,7 +222,7 @@ const Home = () => {
 
 const TeacherDashboard = () => {
   const [classes, setClasses] = useState<ClassInfo[]>([]);
-  const [newClassName, setNewClassName] = useState(() => localStorage.getItem('draft_class_name') || '');
+  const [newClassName, setNewClassName] = useState(() => safeStorage.getItem('draft_class_name') || '');
   const [loading, setLoading] = useState(true);
   const [schoolName, setSchoolName] = useState('');
   const [deadline, setDeadline] = useState('');
@@ -205,7 +231,7 @@ const TeacherDashboard = () => {
   const teacherId = getTeacherId();
 
   useEffect(() => {
-    localStorage.setItem('draft_class_name', newClassName);
+    safeStorage.setItem('draft_class_name', newClassName);
   }, [newClassName]);
 
   useEffect(() => {
@@ -270,9 +296,9 @@ const TeacherDashboard = () => {
 
       setShowSaveSuccess(true);
       setTimeout(() => setShowSaveSuccess(false), 3000);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('共通設定の保存に失敗しました。');
+      alert('共通設定の保存に失敗しました。\nエラー内容: ' + (err?.message || err));
     } finally {
       setIsSavingSettings(false);
     }
@@ -289,7 +315,7 @@ const TeacherDashboard = () => {
       deadline
     });
     setNewClassName('');
-    localStorage.removeItem('draft_class_name');
+    safeStorage.removeItem('draft_class_name');
   };
 
   const handleDeleteClass = async (id: string) => {
@@ -465,12 +491,12 @@ const TeacherDashboard = () => {
 const ClassManagement = () => {
   const { classId } = useParams();
   const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
-  const [activeTab, setActiveTab] = useState<'availability' | 'responses' | 'schedule'>(() => (localStorage.getItem(`active_tab_${classId}`) as any) || 'availability');
+  const [activeTab, setActiveTab] = useState<'availability' | 'responses' | 'schedule'>(() => (safeStorage.getItem(`active_tab_${classId}`) as any) || 'availability');
   const [isEditingInfo, setIsEditingInfo] = useState(false);
   const [editForm, setEditForm] = useState({ schoolName: '', teacherName: '', name: '', deadline: '' });
 
   useEffect(() => {
-    if (classId) localStorage.setItem(`active_tab_${classId}`, activeTab);
+    if (classId) safeStorage.setItem(`active_tab_${classId}`, activeTab);
   }, [activeTab, classId]);
 
   useEffect(() => {
@@ -1681,11 +1707,7 @@ const ParentForm = () => {
   const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
   const [availabilities, setAvailabilities] = useState<TeacherAvailability[]>([]);
   const [studentName, setStudentName] = useState(() => {
-    try {
-      return localStorage.getItem(`draft_student_name_${classId}`) || '';
-    } catch {
-      return '';
-    }
+    return safeStorage.getItem(`draft_student_name_${classId}`) || '';
   });
   const [guardianPhone, setGuardianPhone] = useState('');
   const [ngSlots, setNgSlots] = useState<{ date: string; start: string; end: string }[]>([]);
@@ -1698,11 +1720,7 @@ const ParentForm = () => {
 
   useEffect(() => {
     if (classId) {
-      try {
-        localStorage.setItem(`draft_student_name_${classId}`, studentName);
-      } catch (e) {
-        console.warn(e);
-      }
+      safeStorage.setItem(`draft_student_name_${classId}`, studentName);
     }
   }, [studentName, classId]);
 
@@ -1805,7 +1823,7 @@ const ParentForm = () => {
     }
 
     setSubmitted(true);
-    localStorage.removeItem(`draft_student_name_${classId}`);
+    safeStorage.removeItem(`draft_student_name_${classId}`);
   };
 
   if (submitted) {
@@ -2325,7 +2343,7 @@ const SyncDevice = () => {
 
   useEffect(() => {
     if (teacherId) {
-      localStorage.setItem('teacher_id', teacherId);
+      safeStorage.setItem('teacher_id', teacherId);
     }
     navigate('/');
   }, [teacherId, navigate]);
