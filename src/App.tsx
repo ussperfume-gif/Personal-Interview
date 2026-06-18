@@ -1406,6 +1406,12 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
       const respSnap = await getDocs(collection(db, 'classes', classId, 'parentResponses'));
       const responses = respSnap.docs.map(d => d.data() as ParentResponse);
 
+      // Sort availabilities by date, and their slots by start time
+      availabilities.sort((a, b) => a.date.localeCompare(b.date));
+      availabilities.forEach(a => {
+        a.slots.sort((s1, s2) => s1.start.localeCompare(s2.start));
+      });
+
       // 3. Simple Matching Algorithm
       const allAvailableSlots: ScheduleSlot[] = [];
       availabilities.forEach(a => {
@@ -1422,14 +1428,37 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
 
       const resultSlots: ScheduleSlot[] = [];
       const unassignedStudents = [...responses];
-      let interviewCount = 0;
+      let consecutiveInterviews = 0;
+
+      // Helper function to check if slotB directly follows slotA
+      const isConsecutive = (slotA: ScheduleSlot, slotB: ScheduleSlot): boolean => {
+        return slotA.date === slotB.date && slotA.end === slotB.start;
+      };
 
       for (const slot of allAvailableSlots) {
-        // Check if it's break time
-        if (breakInterval > 0 && interviewCount > 0 && interviewCount % breakInterval === 0) {
-          resultSlots.push({ ...slot, studentName: '（休憩）', type: 'break' });
-          interviewCount = 0;
-          continue;
+        const lastSlot = resultSlots.length > 0 ? resultSlots[resultSlots.length - 1] : null;
+
+        // Check if the current slot is consecutive from the last assigned interview slot
+        const isCurrentlyConsecutive = lastSlot &&
+          lastSlot.type === 'interview' &&
+          lastSlot.studentName !== '' &&
+          lastSlot.studentName !== '（空き）' &&
+          lastSlot.studentName !== '（休憩）' &&
+          isConsecutive(lastSlot, slot);
+
+        if (!isCurrentlyConsecutive) {
+          consecutiveInterviews = 0;
+        }
+
+        // If consecutive count reached interval, and the next slot is consecutive, force a break
+        if (breakInterval > 0 && consecutiveInterviews >= breakInterval) {
+          if (isCurrentlyConsecutive) {
+            resultSlots.push({ ...slot, studentName: '（休憩）', type: 'break' });
+            consecutiveInterviews = 0;
+            continue;
+          } else {
+            consecutiveInterviews = 0;
+          }
         }
 
         // Find a student who is NOT NG for this slot
@@ -1440,10 +1469,11 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
         if (studentIndex !== -1) {
           const student = unassignedStudents.splice(studentIndex, 1)[0];
           resultSlots.push({ ...slot, studentName: student.studentName, type: 'interview' });
-          interviewCount++;
+          consecutiveInterviews++;
         } else {
           // No student available for this slot, leave it empty
           resultSlots.push({ ...slot, studentName: '（空き）', type: 'interview' });
+          consecutiveInterviews = 0;
         }
       }
 
