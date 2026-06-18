@@ -90,6 +90,7 @@ interface Schedule {
   settings: {
     breakInterval: number;
     duration: number;
+    zoomGroupingPolicy?: 'none' | 'one_place' | 'time_only';
   };
 }
 
@@ -1309,6 +1310,7 @@ const ParentResponseList = ({ classId }: { classId: string }) => {
 const ScheduleManager = ({ classId }: { classId: string }) => {
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [breakInterval, setBreakInterval] = useState(2);
+  const [zoomGroupingPolicy, setZoomGroupingPolicy] = useState<'none' | 'one_place' | 'time_only'>('none');
   const [isGenerating, setIsGenerating] = useState(false);
   const [allClassesResponses, setAllClassesResponses] = useState<{ [classId: string]: ParentResponse[] }>({});
   const [allSchedules, setAllSchedules] = useState<{ [classId: string]: Schedule }>({});
@@ -1319,8 +1321,10 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'classes', classId, 'schedules', 'current'), (docSnap) => {
       if (docSnap.exists()) {
-        setSchedule(docSnap.data() as Schedule);
-        setBreakInterval(docSnap.data().settings.breakInterval || 2);
+        const data = docSnap.data();
+        setSchedule(data as Schedule);
+        setBreakInterval(data.settings?.breakInterval || 2);
+        setZoomGroupingPolicy(data.settings?.zoomGroupingPolicy || 'none');
       }
     });
     return unsub;
@@ -1435,6 +1439,29 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
         return slotA.date === slotB.date && slotA.end === slotB.start;
       };
 
+      // Zoom grouping policy optimization:
+      // If policy is 'one_place', find the single best day that can accommodate the most Zoom requests
+      let zoomTargetDate = '';
+      if (zoomGroupingPolicy === 'one_place') {
+        const uniqueDates = Array.from(new Set(allAvailableSlots.map(s => s.date)));
+        let maxZoomScore = -1;
+        for (const date of uniqueDates) {
+          const daySlots = allAvailableSlots.filter(s => s.date === date);
+          const zoomResponses = unassignedStudents.filter(s => s.wantsZoom);
+          let matchableCount = 0;
+          zoomResponses.forEach(r => {
+            const hasAvailableSlotInDay = daySlots.some(s => !r.unavailableSlots.some(ng => ng.date === s.date && ng.start === s.start));
+            if (hasAvailableSlotInDay) {
+              matchableCount++;
+            }
+          });
+          if (matchableCount > maxZoomScore) {
+            maxZoomScore = matchableCount;
+            zoomTargetDate = date;
+          }
+        }
+      }
+
       for (const slot of allAvailableSlots) {
         const lastSlot = resultSlots.length > 0 ? resultSlots[resultSlots.length - 1] : null;
 
@@ -1461,10 +1488,57 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
           }
         }
 
-        // Find a student who is NOT NG for this slot
-        const studentIndex = unassignedStudents.findIndex(s => 
+        // Find a student who is NOT NG for this slot with Zoom preferences
+        const candidates = unassignedStudents.filter(s => 
           !s.unavailableSlots.some(ng => ng.date === slot.date && ng.start === slot.start)
         );
+
+        let studentIndex = -1;
+        if (candidates.length > 0) {
+          let preferredCandidates = [...candidates];
+
+          if (zoomGroupingPolicy === 'one_place' && zoomTargetDate) {
+            if (slot.date === zoomTargetDate) {
+              const zoomCandidates = candidates.filter(s => s.wantsZoom);
+              if (zoomCandidates.length > 0) {
+                preferredCandidates = zoomCandidates;
+              } else {
+                preferredCandidates = candidates.filter(s => !s.wantsZoom);
+              }
+            } else {
+              const nonZoomCandidates = candidates.filter(s => !s.wantsZoom);
+              if (nonZoomCandidates.length > 0) {
+                preferredCandidates = nonZoomCandidates;
+              } else {
+                preferredCandidates = candidates.filter(s => s.wantsZoom);
+              }
+            }
+          } else if (zoomGroupingPolicy === 'time_only') {
+            const daySlots = allAvailableSlots.filter(s => s.date === slot.date);
+            const slotIndexInDay = daySlots.findIndex(s => s.start === slot.start);
+            const totalSlotsInDay = daySlots.length;
+            const isFirstHalf = slotIndexInDay < (totalSlotsInDay / 2);
+
+            if (isFirstHalf) {
+              const zoomCandidates = candidates.filter(s => s.wantsZoom);
+              if (zoomCandidates.length > 0) {
+                preferredCandidates = zoomCandidates;
+              } else {
+                preferredCandidates = candidates.filter(s => !s.wantsZoom);
+              }
+            } else {
+              const nonZoomCandidates = candidates.filter(s => !s.wantsZoom);
+              if (nonZoomCandidates.length > 0) {
+                preferredCandidates = nonZoomCandidates;
+              } else {
+                preferredCandidates = candidates.filter(s => s.wantsZoom);
+              }
+            }
+          }
+
+          const chosenStudent = preferredCandidates[0];
+          studentIndex = unassignedStudents.findIndex(s => s.studentName === chosenStudent.studentName);
+        }
 
         if (studentIndex !== -1) {
           const student = unassignedStudents.splice(studentIndex, 1)[0];
@@ -1484,7 +1558,7 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
 
       await setDoc(doc(db, 'classes', classId, 'schedules', 'current'), {
         slots: resultSlots,
-        settings: { breakInterval }
+        settings: { breakInterval, zoomGroupingPolicy }
       });
     } finally {
       setIsGenerating(false);
@@ -1577,13 +1651,14 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
     <div className="space-y-8">
       <div className="bg-white p-6 rounded-2xl border border-[#E1E2E4] shadow-sm">
         <h3 className="font-bold mb-4">自動作成設定</h3>
-        <div className="flex flex-wrap items-end gap-6">
-          <div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          <div className="space-y-2">
             <label className="block text-sm font-medium text-[#44474E] mb-2">休憩を入れる間隔</label>
             <div className="flex gap-2">
               {[0, 1, 2, 3].map(val => (
                 <button
                   key={val}
+                  type="button"
                   onClick={() => setBreakInterval(val)}
                   className={cn(
                     "px-4 py-2 rounded-lg border font-medium transition-all",
@@ -1596,7 +1671,42 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
                 </button>
               ))}
             </div>
+            <p className="text-xs text-gray-400 mt-1">※連続で指定した人数分の面談が入った後に1回休憩（空き枠）を追加します</p>
           </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-[#44474E]">ZOOM希望者の配置方法</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {[
+                { val: 'none' as const, label: '日も時間もばらばら（標準）', desc: '空いている枠から割り当て' },
+                { val: 'one_place' as const, label: '1日1ヵ所にまとめる', desc: '特定の日1日にまとめて割り当て' },
+                { val: 'time_only' as const, label: '複数日でも時間だけまとめる', desc: '各日の前半に寄せて割り当て' },
+              ].map(item => (
+                <button
+                  key={item.val}
+                  type="button"
+                  onClick={() => setZoomGroupingPolicy(item.val)}
+                  className={cn(
+                    "px-3 py-2 rounded-lg border text-left flex flex-col justify-between min-h-[4.5rem] transition-all",
+                    zoomGroupingPolicy === item.val
+                      ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                      : "bg-white border-[#E1E2E4] text-[#44474E] hover:bg-[#F8F9FA]"
+                  )}
+                >
+                  <span className="font-bold text-xs leading-snug">{item.label}</span>
+                  <span className={cn(
+                    "text-[10px] leading-tight block mt-1",
+                    zoomGroupingPolicy === item.val ? "text-blue-100" : "text-gray-400"
+                  )}>
+                    {item.desc}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 pt-6 border-t border-[#F1F2F4] flex justify-end">
           <button
             onClick={generateSchedule}
             disabled={isGenerating}
