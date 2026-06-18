@@ -84,9 +84,19 @@
           }
         }
       }
+    },
+    "Teacher": {
+      "title": "Teacher",
+      "description": "教員の共通設定情報",
+      "type": "object",
+      "properties": {
+        "schoolName": { "type": "string", "description": "学校名" },
+        "deadline": { "type": "string", "format": "date", "description": "共通回答期限" }
+      }
     }
   },
   "firestore": {
+    "/teachers/{teacherId}": { "schema": "Teacher", "description": "教員の共通設定（学校名、回答期限）" },
     "/classes/{classId}": { "schema": "Class", "description": "クラスの基本情報" },
     "/classes/{classId}/teacherAvailability/{date}": { "schema": "TeacherAvailability", "description": "教職員の空き時間" },
     "/classes/{classId}/parentResponses/{studentId}": { "schema": "ParentResponse", "description": "保護者の回答" },
