@@ -1434,9 +1434,19 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
       const unassignedStudents = [...responses];
       let consecutiveInterviews = 0;
 
-      // Helper function to check if slotB directly follows slotA
+      // Helper function to check if slotB directly follows slotA (allowing standard gaps up to 20 minutes)
       const isConsecutive = (slotA: ScheduleSlot, slotB: ScheduleSlot): boolean => {
-        return slotA.date === slotB.date && slotA.end === slotB.start;
+        if (slotA.date !== slotB.date) return false;
+        try {
+          const [hA, mA] = slotA.end.split(':').map(Number);
+          const [hB, mB] = slotB.start.split(':').map(Number);
+          const tA = hA * 60 + mA;
+          const tB = hB * 60 + mB;
+          const diff = tB - tA;
+          return diff >= 0 && diff <= 20;
+        } catch (e) {
+          return false;
+        }
       };
 
       // Zoom grouping policy optimization:
