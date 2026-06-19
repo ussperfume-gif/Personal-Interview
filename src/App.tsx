@@ -1317,6 +1317,7 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
   const [allClassesInfo, setAllClassesInfo] = useState<{ [classId: string]: ClassInfo }>({});
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<'matrix' | 'list'>('matrix');
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'classes', classId, 'schedules', 'current'), (docSnap) => {
@@ -1729,131 +1730,344 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
 
       {schedule && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <h3 className="text-xl font-bold">作成されたスケジュール</h3>
-            <Link
-              to={`/letter/${classId}`}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E1E2E4] text-[#1A1C1E] rounded-lg font-medium hover:bg-[#F8F9FA] transition-colors"
-            >
-              <Printer size={18} />
-              お知らせの手紙を表示
-            </Link>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl border border-[#E1E2E4] print:hidden">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('matrix')}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                    viewMode === 'matrix' 
+                      ? "bg-white text-blue-600 shadow-xs" 
+                      : "text-gray-500 hover:text-gray-800"
+                  )}
+                >
+                  <Calendar size={13} />
+                  時間割表表示
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                    viewMode === 'list' 
+                      ? "bg-white text-blue-600 shadow-xs" 
+                      : "text-gray-500 hover:text-gray-800"
+                  )}
+                >
+                  <FileText size={13} />
+                  リスト表示
+                </button>
+              </div>
+              <Link
+                to={`/letter/${classId}`}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E1E2E4] text-[#1A1C1E] rounded-lg font-medium hover:bg-[#F8F9FA] transition-colors text-sm shadow-xs"
+              >
+                <Printer size={18} />
+                お知らせの手紙を表示
+              </Link>
+            </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-[#E1E2E4] shadow-sm overflow-hidden">
-            <table className="w-full text-left">
-              <thead className="bg-[#F8F9FA] text-sm font-medium text-[#44474E]">
-                <tr>
-                  <th className="px-6 py-3">日時</th>
-                  <th className="px-6 py-3">時間</th>
-                  <th className="px-6 py-3">児童・生徒名</th>
-                  <th className="px-6 py-3">兄弟の状況</th>
-                  <th className="px-6 py-3">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E1E2E4]">
-                {schedule.slots.map((slot, i) => {
-                  const siblings = getSiblingInfo(slot.studentName, classId);
-                  const draggedStudent = draggingIndex !== null ? schedule.slots[draggingIndex].studentName : '';
-                  const isDraggingActive = draggingIndex !== null;
-                  const isDraggingThis = draggingIndex === i;
-                  const isDragOverThis = dragOverIndex === i;
-                  const isNGForDragged = draggedStudent ? isSlotNGForStudent(draggedStudent, slot.date, slot.start) : false;
-
-                  return (
-                    <tr 
-                      key={i} 
-                      onDragOver={(e) => handleDragOver(e, i)}
-                      onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, i)}
-                      className={cn(
-                        "transition-all duration-150 border-b border-[#E1E2E4]",
-                        slot.type === 'break' && "bg-gray-50 italic text-gray-500",
-                        // Active drag styles
-                        isDraggingActive && isDraggingThis && "bg-blue-50/60 opacity-50 border-2 border-dashed border-blue-400 scale-[0.98]",
-                        isDraggingActive && !isDraggingThis && isNGForDragged && "bg-red-50/20 opacity-40 grayscale pointer-events-none select-none hover:bg-red-50/20",
-                        isDraggingActive && !isDraggingThis && !isNGForDragged && isDragOverThis && "bg-green-100/75 border-y-2 border-dashed border-green-500 scale-[0.99] shadow-sm",
-                        isDraggingActive && !isDraggingThis && !isNGForDragged && !isDragOverThis && "bg-green-50/10 border-dashed border-green-200 cursor-copy hover:bg-green-100/30"
-                      )}
-                    >
-                      <td className="px-6 py-4 text-sm font-medium">
-                        {slot.date ? format(parse(slot.date, 'yyyy-MM-dd', new Date()), 'M/d(E)', { locale: ja }) : '-'}
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        {slot.start ? `${slot.start} - ${slot.end}` : '-'}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2 py-0.5">
-                          {/* Drag handle block */}
-                          <div
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, i)}
-                            onDragEnd={handleDragEnd}
-                            className={cn(
-                              "flex items-center gap-1.5 p-1 px-2.5 rounded-lg border shadow-xs cursor-grab active:cursor-grabbing transition-all select-none max-w-full font-bold text-sm",
-                              slot.studentName === '（休憩）' || slot.studentName === '（空き）' || !slot.studentName
-                                ? "bg-gray-100/80 border-gray-200 text-gray-500 hover:bg-gray-200"
-                                : getStudentZoomRequest(slot.studentName)
-                                  ? "bg-blue-50 border-blue-200 text-blue-900 hover:bg-blue-100"
-                                  : "bg-white border-blue-100 text-blue-950 hover:bg-blue-50"
-                            )}
-                            title="ドラッグして他の時間帯の枠と入れ替えられます"
-                          >
-                            <GripVertical size={13} className="text-gray-400 flex-shrink-0" />
-                            <span className="truncate max-w-[150px]">{slot.studentName || '（空き）'}</span>
-                          </div>
-
-                          {/* Quick manual text correction field */}
-                          <input
-                            type="text"
-                            value={slot.studentName}
-                            onChange={(e) => updateSlot(i, e.target.value)}
-                            className="bg-transparent border-b border-transparent focus:border-blue-400 focus:ring-0 text-xs text-gray-400 hover:text-gray-600 focus:text-gray-900 transition-all w-24 px-1 py-0.5 ml-1"
-                            placeholder="直接編集..."
-                            title="クリックして名前を直接書き換えることもできます"
-                          />
-
-                          {getStudentZoomRequest(slot.studentName) && (
-                            <span className="flex-shrink-0 text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full select-none animate-pulse" title="Zoom面談を希望しています">
-                              💻 Zoom希望
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        {siblings && siblings.map((sib, idx) => {
-                          const isDifferentDay = sib.date && sib.date !== slot.date;
-                          return (
-                            <div key={idx} className="text-[10px] leading-tight text-orange-600 font-bold bg-orange-50 px-2 py-1 rounded border border-orange-100 mb-1">
-                              兄弟: {sib.studentName} ({sib.className})
-                              {isDifferentDay && <span className="ml-1 text-red-600 bg-red-50 px-1 rounded">[別日]</span>}
-                              <br/>
-                              {sib.time}
-                            </div>
-                          );
-                        })}
-                      </td>
-                      <td className="px-6 py-4">
-                        {isDraggingActive && !isDraggingThis ? (
-                          isNGForDragged ? (
-                            <span className="text-[10px] md:text-xs font-bold text-red-500 bg-red-50 border border-red-100 px-2.5 py-1 rounded-md shadow-xs flex items-center gap-1 w-fit select-none">
-                              ✕ NG時間帯 (配置不可)
-                            </span>
-                          ) : (
-                            <span className="text-[10px] md:text-xs font-bold text-green-600 bg-green-50 border border-green-100 px-2.5 py-1 rounded-md shadow-xs flex items-center gap-1 w-fit animate-bounce">
-                              ✓ 配置可能 (ドロップ可)
-                            </span>
-                          )
-                        ) : (
-                          slot.studentName === '' && <span className="text-xs text-red-500 font-bold">未配置</span>
-                        )}
-                      </td>
+          {viewMode === 'matrix' ? (
+            <div className="bg-white rounded-2xl border border-[#E1E2E4] shadow-sm overflow-hidden">
+              <div className="w-full overflow-x-auto">
+                <table className="w-full border-collapse border-spacing-0 text-left min-w-[700px]">
+                  <thead className="bg-[#F8F9FA] text-sm font-medium text-[#44474E] border-b border-[#E1E2E4]">
+                    <tr>
+                      <th className="px-4 py-3 font-bold border-r border-[#E1E2E4] text-center sticky left-0 bg-[#F8F9FA] z-10 w-32 shadow-[2px_0_5px_rgba(0,0,0,0.03)]">
+                        時間帯
+                      </th>
+                      {(() => {
+                        const activeSlots = schedule.slots.filter(s => s.date && s.start);
+                        const uniqueDates = Array.from(new Set(activeSlots.map(s => s.date))).sort() as string[];
+                        return uniqueDates.map(date => (
+                          <th key={date} className="px-4 py-3 font-bold border-r border-[#E1E2E4] text-center min-w-[150px]">
+                            {format(parse(date, 'yyyy-MM-dd', new Date()), 'M/d(E)', { locale: ja })}
+                          </th>
+                        ));
+                      })()}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody className="divide-y divide-[#E1E2E4]">
+                    {(() => {
+                      const activeSlots = schedule.slots.filter(s => s.date && s.start);
+                      const uniqueDates = Array.from(new Set(activeSlots.map(s => s.date))).sort() as string[];
+                      const uniqueTimeSlots = (Array.from(
+                        new Set(activeSlots.map(s => JSON.stringify({ start: s.start, end: s.end })))
+                      ) as string[]).map(str => JSON.parse(str) as { start: string; end: string })
+                       .sort((a, b) => a.start.localeCompare(b.start));
+
+                      return uniqueTimeSlots.map(timeSlot => (
+                        <tr key={`${timeSlot.start}-${timeSlot.end}`} className="hover:bg-[#F8F9FA]/50 transition-colors">
+                          <td className="px-4 py-4 text-sm font-bold border-r border-[#E1E2E4] bg-gray-50/50 text-center sticky left-0 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
+                            <div className="flex flex-col justify-center items-center gap-0.5">
+                              <Clock size={12} className="text-gray-400" />
+                              <span className="text-[#1A1C1E] font-bold text-sm">{timeSlot.start}</span>
+                              <span className="text-[10px] text-gray-400 font-normal">~ {timeSlot.end}</span>
+                            </div>
+                          </td>
+                          {uniqueDates.map(date => {
+                            const slotIdx = schedule.slots.findIndex(s => s.date === date && s.start === timeSlot.start && s.end === timeSlot.end);
+                            if (slotIdx === -1) {
+                              return (
+                                <td 
+                                  key={date} 
+                                  className="p-1 border-r border-[#E1E2E4] bg-gray-50/30 text-center text-gray-300 italic text-xs select-none"
+                                  style={{
+                                    backgroundImage: 'repeating-linear-gradient(45deg, #f9fafb, #f9fafb 4px, #f3f4f6 4px, #f3f4f6 8px)'
+                                  }}
+                                >
+                                  -
+                                </td>
+                              );
+                            }
+
+                            const slot = schedule.slots[slotIdx];
+                            const siblings = getSiblingInfo(slot.studentName, classId);
+                            const draggedStudent = draggingIndex !== null ? schedule.slots[draggingIndex].studentName : '';
+                            const isDraggingActive = draggingIndex !== null;
+                            const isDraggingThis = draggingIndex === slotIdx;
+                            const isDragOverThis = dragOverIndex === slotIdx;
+                            const isNGForDragged = draggedStudent ? isSlotNGForStudent(draggedStudent, slot.date, slot.start) : false;
+
+                            return (
+                              <td
+                                key={date}
+                                onDragOver={(e) => handleDragOver(e, slotIdx)}
+                                onDragLeave={handleDragLeave}
+                                onDrop={(e) => handleDrop(e, slotIdx)}
+                                className={cn(
+                                  "p-3 border-r border-[#E1E2E4] text-xs transition-all relative min-h-[90px] w-40",
+                                  slot.type === 'break' && "bg-gray-50 italic text-gray-500",
+                                  // Active drag styles
+                                  isDraggingActive && isDraggingThis && "bg-blue-50/60 opacity-50 border-2 border-dashed border-blue-400 scale-[0.98]",
+                                  isDraggingActive && !isDraggingThis && isNGForDragged && "bg-red-50/20 opacity-40 grayscale pointer-events-none select-none hover:bg-red-50/20",
+                                  isDraggingActive && !isDraggingThis && !isNGForDragged && isDragOverThis && "bg-green-100/75 border-y-2 border-dashed border-green-500 scale-[0.99] shadow-sm",
+                                  isDraggingActive && !isDraggingThis && !isNGForDragged && !isDragOverThis && "bg-green-50/10 border-dashed border-green-200 cursor-copy hover:bg-green-100/30"
+                                )}
+                              >
+                                <div className="space-y-1.5 h-full flex flex-col justify-between">
+                                  <div
+                                    draggable
+                                    onDragStart={(e) => handleDragStart(e, slotIdx)}
+                                    onDragEnd={handleDragEnd}
+                                    className={cn(
+                                      "flex items-center justify-between gap-1 p-1.5 rounded-lg border shadow-xs cursor-grab active:cursor-grabbing transition-all select-none max-w-full font-bold text-xs",
+                                      slot.studentName === '（休憩）' || slot.studentName === '（空き）' || !slot.studentName
+                                        ? "bg-gray-100 border-gray-200 text-gray-400 hover:bg-gray-200"
+                                        : getStudentZoomRequest(slot.studentName)
+                                          ? "bg-blue-50 border-blue-200 text-blue-950 hover:bg-blue-100"
+                                          : "bg-white border-blue-100 text-blue-950 hover:bg-blue-50"
+                                    )}
+                                    title="ドラッグして他の時間帯の枠と入れ替えられます"
+                                  >
+                                    <span className="truncate max-w-[100px]">{slot.studentName || '（空き）'}</span>
+                                    <GripVertical size={11} className="text-gray-400 flex-shrink-0" />
+                                  </div>
+
+                                  <input
+                                    type="text"
+                                    value={slot.studentName}
+                                    onChange={(e) => updateSlot(slotIdx, e.target.value)}
+                                    className="bg-transparent border-b border-transparent focus:border-blue-400 focus:ring-0 text-[11px] text-[#44474E] hover:text-gray-600 focus:text-gray-900 transition-all w-full px-1 py-0.5"
+                                    placeholder="直接編集..."
+                                  />
+
+                                  {getStudentZoomRequest(slot.studentName) && (
+                                    <div className="text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-1 py-0.5 rounded-md select-none text-center truncate" title="Zoom希望">
+                                      💻 Zoom希望
+                                    </div>
+                                  )}
+
+                                  {siblings && siblings.map((sib, sIdx) => {
+                                    const isDifferentDay = sib.date && sib.date !== slot.date;
+                                    return (
+                                      <div key={sIdx} className="text-[9px] leading-tight text-orange-600 font-bold bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100 truncate" title={`兄弟: ${sib.studentName} (${sib.className})`}>
+                                        兄弟: {sib.studentName}
+                                        {isDifferentDay && <span className="ml-0.5 text-red-650 font-normal">[別日]</span>}
+                                      </div>
+                                    );
+                                  })}
+
+                                  {isDraggingActive && !isDraggingThis && (
+                                    <div className="pt-0.5">
+                                      {isNGForDragged ? (
+                                        <span className="text-[8px] font-bold text-red-500 bg-red-50 border border-red-100 px-1 py-0.5 rounded block text-center">
+                                          ✕ NG
+                                        </span>
+                                      ) : (
+                                        <span className="text-[8px] font-bold text-green-650 bg-green-50 border border-green-100 px-1 py-0.5 rounded block text-center">
+                                          ✓ 配置可
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ));
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-[#E1E2E4] shadow-sm overflow-hidden">
+              <table className="w-full text-left">
+                <thead className="bg-[#F8F9FA] text-sm font-medium text-[#44474E]">
+                  <tr>
+                    <th className="px-6 py-3">日時</th>
+                    <th className="px-6 py-3">時間</th>
+                    <th className="px-6 py-3">児童・生徒名</th>
+                    <th className="px-6 py-3">兄弟の状況</th>
+                    <th className="px-6 py-3">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E1E2E4]">
+                  {schedule.slots.map((slot, i) => {
+                    const siblings = getSiblingInfo(slot.studentName, classId);
+                    const draggedStudent = draggingIndex !== null ? schedule.slots[draggingIndex].studentName : '';
+                    const isDraggingActive = draggingIndex !== null;
+                    const isDraggingThis = draggingIndex === i;
+                    const isDragOverThis = dragOverIndex === i;
+                    const isNGForDragged = draggedStudent ? isSlotNGForStudent(draggedStudent, slot.date, slot.start) : false;
+
+                    return (
+                      <tr 
+                        key={i} 
+                        onDragOver={(e) => handleDragOver(e, i)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, i)}
+                        className={cn(
+                          "transition-all duration-150 border-b border-[#E1E2E4]",
+                          slot.type === 'break' && "bg-gray-50 italic text-gray-500",
+                          // Active drag styles
+                          isDraggingActive && isDraggingThis && "bg-blue-50/60 opacity-50 border-2 border-dashed border-blue-400 scale-[0.98]",
+                          isDraggingActive && !isDraggingThis && isNGForDragged && "bg-red-50/20 opacity-40 grayscale pointer-events-none select-none hover:bg-red-50/20",
+                          isDraggingActive && !isDraggingThis && !isNGForDragged && isDragOverThis && "bg-green-100/75 border-y-2 border-dashed border-green-500 scale-[0.99] shadow-sm",
+                          isDraggingActive && !isDraggingThis && !isNGForDragged && !isDragOverThis && "bg-green-50/10 border-dashed border-green-200 cursor-copy hover:bg-green-100/30"
+                        )}
+                      >
+                        <td className="px-6 py-4 text-sm font-medium">
+                          {slot.date ? format(parse(slot.date, 'yyyy-MM-dd', new Date()), 'M/d(E)', { locale: ja }) : '-'}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {slot.start ? `${slot.start} - ${slot.end}` : '-'}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2 py-0.5">
+                            {/* Drag handle block */}
+                            <div
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, i)}
+                              onDragEnd={handleDragEnd}
+                              className={cn(
+                                "flex items-center gap-1.5 p-1 px-2.5 rounded-lg border shadow-xs cursor-grab active:cursor-grabbing transition-all select-none max-w-full font-bold text-sm",
+                                slot.studentName === '（休憩）' || slot.studentName === '（空き）' || !slot.studentName
+                                  ? "bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200"
+                                  : getStudentZoomRequest(slot.studentName)
+                                    ? "bg-blue-50 border-blue-200 text-blue-900 hover:bg-blue-100"
+                                    : "bg-white border-blue-100 text-blue-950 hover:bg-blue-50"
+                              )}
+                              title="ドラッグして他の時間帯の枠と入れ替えられます"
+                            >
+                              <GripVertical size={13} className="text-gray-400 flex-shrink-0" />
+                              <span className="truncate max-w-[150px]">{slot.studentName || '（空き）'}</span>
+                            </div>
+
+                            {/* Quick manual text correction field */}
+                            <input
+                              type="text"
+                              value={slot.studentName}
+                              onChange={(e) => updateSlot(i, e.target.value)}
+                              className="bg-transparent border-b border-transparent focus:border-blue-400 focus:ring-0 text-xs text-gray-400 hover:text-gray-600 focus:text-gray-900 transition-all w-24 px-1 py-0.5 ml-1"
+                              placeholder="直接編集..."
+                              title="クリックして名前を直接書き換えることもできます"
+                            />
+
+                            {getStudentZoomRequest(slot.studentName) && (
+                              <span className="flex-shrink-0 text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full select-none animate-pulse" title="Zoom面談を希望しています">
+                                💻 Zoom希望
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          {siblings && siblings.map((sib, idx) => {
+                            const isDifferentDay = sib.date && sib.date !== slot.date;
+                            return (
+                              <div key={idx} className="text-[10px] leading-tight text-orange-600 font-bold bg-orange-50 px-2 py-1 rounded border border-orange-100 mb-1">
+                                兄弟: {sib.studentName} ({sib.className})
+                                {isDifferentDay && <span className="ml-1 text-red-600 bg-red-50 px-1 rounded">[別日]</span>}
+                                <br/>
+                                {sib.time}
+                              </div>
+                            );
+                          })}
+                        </td>
+                        <td className="px-6 py-4">
+                          {isDraggingActive && !isDraggingThis ? (
+                            isNGForDragged ? (
+                              <span className="text-[10px] md:text-xs font-bold text-red-500 bg-red-50 border border-red-100 px-2.5 py-1 rounded-md shadow-xs flex items-center gap-1 w-fit select-none">
+                                ✕ NG時間帯 (配置不可)
+                              </span>
+                            ) : (
+                              <span className="text-[10px] md:text-xs font-bold text-green-600 bg-green-50 border border-green-100 px-2.5 py-1 rounded-md shadow-xs flex items-center gap-1 w-fit animate-bounce">
+                                ✓ 配置可能 (ドロップ可)
+                              </span>
+                            )
+                          ) : (
+                            slot.studentName === '' && <span className="text-xs text-red-500 font-bold">未配置</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Unassigned Students Section */}
+          {(() => {
+            const unassignedItemIndices = schedule.slots
+              .map((s, idx) => ({ slot: s, index: idx }))
+              .filter(item => !item.slot.date || !item.slot.start);
+
+            if (unassignedItemIndices.length === 0) return null;
+
+            return (
+              <div className="p-5 border-2 border-dashed border-amber-200 bg-amber-50/40 rounded-2xl">
+                <h4 className="font-extrabold text-sm text-amber-900 flex items-center gap-2">
+                  <AlertCircle size={16} className="text-amber-600" />
+                  未配置の児童・生徒（{unassignedItemIndices.length}人）
+                </h4>
+                <p className="text-xs text-amber-700 mt-1 mb-4">
+                  自動スケジューラ調整で、時間枠またはご都合の合う枠が不足していたため配置されなかった児童です。
+                  空いている枠（空き枠）へ<b>ドラッグ＆ドロップして配置・入れ替え</b>が可能です。
+                </p>
+                <div className="flex flex-wrap gap-2.5">
+                  {unassignedItemIndices.map(({ slot, index }) => (
+                    <div
+                      key={index}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, index)}
+                      onDragEnd={handleDragEnd}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-white border border-amber-200 text-amber-900 rounded-lg shadow-xs hover:shadow-sm cursor-grab active:cursor-grabbing font-bold text-xs select-none"
+                    >
+                      <GripVertical size={12} className="text-amber-400" />
+                      <span>{slot.studentName}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
