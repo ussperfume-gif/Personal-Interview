@@ -241,6 +241,14 @@ const TeacherDashboard = () => {
       const list = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as ClassInfo))
         .filter(c => !c.id.startsWith('settings_'));
+      
+      // クラス名で昇順にソートする
+      list.sort((a, b) => {
+        const nameA = a.name || '';
+        const nameB = b.name || '';
+        return nameA.localeCompare(nameB, 'ja', { numeric: true, sensitivity: 'base' });
+      });
+
       setClasses(list);
       setLoading(false);
     });
@@ -2385,6 +2393,7 @@ const LetterView = () => {
   const navigate = useNavigate();
   const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
   const [schedule, setSchedule] = useState<Schedule | null>(null);
+  const [responses, setResponses] = useState<ParentResponse[]>([]);
   const [messageText, setMessageText] = useState("");
   const [isCopied, setIsCopied] = useState(false);
 
@@ -2395,6 +2404,10 @@ const LetterView = () => {
     });
     getDoc(doc(db, 'classes', classId, 'schedules', 'current')).then(docSnap => {
       if (docSnap.exists()) setSchedule(docSnap.data() as Schedule);
+    });
+    getDocs(collection(db, 'classes', classId, 'parentResponses')).then(snapshot => {
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ParentResponse));
+      setResponses(list);
     });
   }, [classId]);
 
@@ -2408,10 +2421,19 @@ const LetterView = () => {
         return a.start.localeCompare(b.start);
       });
 
+    const zoomStudentNames = new Set(
+      responses
+        .filter(r => r.wantsZoom)
+        .map(r => r.studentName.replace(/\s+/g, ''))
+    );
+
     const slotsText = sortedSlots.length > 0 
       ? sortedSlots.map(slot => {
           const formattedDate = format(parse(slot.date, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja });
-          return `・${formattedDate} ${slot.start} ～ ${slot.end} ： ${slot.studentName} 様`;
+          const normalizedSlotName = slot.studentName.replace(/\s+/g, '');
+          const isZoom = zoomStudentNames.has(normalizedSlotName);
+          const starMark = isZoom ? " ★" : "";
+          return `・${formattedDate} ${slot.start} ～ ${slot.end} ： ${slot.studentName}${starMark} 様`;
         }).join('\n')
       : '・（決定された面談枠がありません。スケジュールを自動作成してください）';
 
@@ -2426,13 +2448,16 @@ const LetterView = () => {
 1. 決定した面談日程一覧
 ${slotsText}
 
+※お名前の後ろに★印がある方は、オンライン（Zoom）での面談となります。別途ズーム用の参加用リンクをご確認いただくか、追って学校より接続情報をご案内いたします。
+
 2. 面談場所
 各教室
+（★印の方はご自宅等からZoomにてご参加ください）
 
 ※ご都合が悪くなった場合や急な変更等が生じた場合は、お早めに担任までご連絡ください。`;
 
     setMessageText(text);
-  }, [classInfo, schedule]);
+  }, [classInfo, schedule, responses]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(messageText).then(() => {
