@@ -2385,7 +2385,8 @@ const LetterView = () => {
   const navigate = useNavigate();
   const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
   const [schedule, setSchedule] = useState<Schedule | null>(null);
-  const [showPdfGuide, setShowPdfGuide] = useState(false);
+  const [messageText, setMessageText] = useState("");
+  const [isCopied, setIsCopied] = useState(false);
 
   useEffect(() => {
     if (!classId) return;
@@ -2397,100 +2398,147 @@ const LetterView = () => {
     });
   }, [classId]);
 
-  const handleSavePdf = () => {
-    setShowPdfGuide(true);
+  useEffect(() => {
+    if (!classInfo || !schedule) return;
+
+    const sortedSlots = [...schedule.slots]
+      .filter(s => s.type === 'interview' && s.studentName && !s.studentName.includes('（'))
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        return a.start.localeCompare(b.start);
+      });
+
+    const slotsText = sortedSlots.length > 0 
+      ? sortedSlots.map(slot => {
+          const formattedDate = format(parse(slot.date, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja });
+          return `・${formattedDate} ${slot.start} ～ ${slot.end} ： ${slot.studentName} 様`;
+        }).join('\n')
+      : '・（決定された面談枠がありません。スケジュールを自動作成してください）';
+
+    const text = `【${classInfo.name}】個人面談日程決定のお知らせ
+
+いつも学校の教育活動にご理解とご協力をいただき、誠にありがとうございます。
+
+先日、アンケートにて調整いたしました、個人面談の日程が以下のように決定いたしましたのでお知らせいたします。
+当日はお気をつけて、決定されました時間にお越しくださいますようお願い申し上げます。
+
+
+1. 決定した面談日程一覧
+${slotsText}
+
+2. 面談場所
+各教室
+
+※ご都合が悪くなった場合や急な変更等が生じた場合は、お早めに担任までご連絡ください。`;
+
+    setMessageText(text);
+  }, [classInfo, schedule]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(messageText).then(() => {
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    });
   };
 
   if (!classInfo || !schedule) return <div className="text-center py-20">読み込み中...</div>;
 
   return (
-    <div className="max-w-4xl mx-auto py-8 print:p-0 print:py-0 print:max-w-none">
-      <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800 flex items-start gap-2.5 print:hidden shadow-sm">
-        <span className="text-lg">💡</span>
-        <div>
-          <p className="font-bold mb-0.5">お手紙の内容をその場で直接編集できます</p>
-          <p className="text-xs text-blue-700">お名前、学校名、タイトル、本文、注意書きなど、手紙の任意の文字をクリックするとキーボード操作で自由に書き換えることができます。編集内容は印刷やPDF保存にそのまま反映されます。（決定された面談枠の日時は変更しないでください）</p>
+    <div className="max-w-4xl mx-auto py-8 px-4 print:p-0">
+      {window.location.origin.includes('-dev-') && (
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800 font-medium print:hidden shadow-xs">
+          ⚠️ 現在「開発用URL」でメッセージを作成しています。このまま配布すると保護者の端末でエラー（403）が表示されます。
+          <br />
+          右上の「共有」ボタンから発行される「公開用URL（-pre-で始まるURL）」の管理画面からURLを発行・コピーしてください。
         </div>
-      </div>
+      )}
 
-      <div className="flex items-center justify-between mb-8 print:hidden">
-        <button
-          onClick={() => navigate(`/teacher/class/${classId}`)}
-          className="flex items-center gap-2 px-4 py-2 text-[#44474E] hover:bg-gray-100 rounded-lg transition-colors font-medium"
-        >
-          <X size={18} />
-          管理画面に戻る
-        </button>
-        <div className="flex gap-3">
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-blue-200 text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition-colors"
-          >
-            <Printer size={18} />
-            印刷
-          </button>
-          <button
-            onClick={handleSavePdf}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm"
-          >
-            <FileText size={18} />
-            PDFで保存
-          </button>
-        </div>
-      </div>
-
-      <div id="schedule-letter-content" className="bg-white p-12 shadow-lg min-h-[297mm] print:shadow-none print:p-0">
-        <div className="text-right mb-8">
-          <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded inline-block cursor-text hover:border-b hover:border-gray-300 min-w-[120px] transition-colors">{format(new Date(), 'yyyy年M月d日')}</p>
-        </div>
-
-        <div className="mb-12">
-          <p contentEditable suppressContentEditableWarning className="text-lg outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">保護者 各位</p>
-          <p contentEditable suppressContentEditableWarning className="text-right outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">{classInfo.schoolName || '（学校名）'}</p>
-          <p contentEditable suppressContentEditableWarning className="text-right outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">{classInfo.name} 担任 {classInfo.teacherName ? `${classInfo.teacherName}` : '（氏名）'}</p>
-        </div>
-
-        <h1 contentEditable suppressContentEditableWarning className="text-2xl font-bold text-center mb-12 underline underline-offset-8 outline-none focus:bg-blue-50/50 p-2 rounded cursor-text hover:border hover:border-gray-300 transition-colors">個人面談の日程について（お知らせ）</h1>
-
-        <p contentEditable suppressContentEditableWarning className="mb-8 leading-relaxed outline-none focus:bg-blue-50/50 p-2 rounded cursor-text hover:border hover:border-gray-300 transition-colors">
-          拝啓 時下ますますご清祥のこととお慶び申し上げます。日頃より本校の教育活動にご理解とご協力をいただき、厚く御礼申し上げます。<br />
-          さて、先日アンケートにてご回答いただきました個人面談の日程が、下記の通り決定いたしましたのでお知らせいたします。<br />
-          お忙しい中とは存じますが、万障お繰り合わせの上、ご来校くださいますようお願い申し上げます。
-        </p>
-
-        <div className="border-2 border-black p-8">
-          <p contentEditable suppressContentEditableWarning className="text-center font-bold mb-6 text-xl outline-none focus:bg-blue-50/50 p-1 rounded cursor-text transition-colors">記</p>
-          <div className="space-y-4">
-            {schedule.slots.filter(s => s.type === 'interview' && s.studentName && !s.studentName.includes('（')).sort((a,b) => {
-              if (a.date !== b.date) return a.date.localeCompare(b.date);
-              return a.start.localeCompare(b.start);
-            }).map((slot, i) => (
-              <div key={i} className="flex border-b border-gray-200 pb-2">
-                <div className="w-1/3 font-bold text-gray-800">
-                  {format(parse(slot.date, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja })}
-                </div>
-                <div className="w-1/3 text-gray-700">
-                  {slot.start} ～ {slot.end}
-                </div>
-                <div className="w-1/3 text-right font-medium">
-                  {slot.studentName} 様
-                </div>
-              </div>
-            ))}
+      {/* 案内ヘッダー */}
+      <div className="mb-6 p-5 bg-blue-50/70 border border-blue-200 rounded-xl text-sm text-blue-900 print:hidden shadow-sm">
+        <div className="flex items-start gap-3">
+          <span className="text-xl">📢</span>
+          <div className="space-y-1">
+            <h3 className="font-bold">配信用決定お便りテキスト作成</h3>
+            <p className="text-xs text-blue-700 leading-relaxed">
+              PDFや印刷の制約をなくし、そのまま連絡システムやメール、LINEへペースト（貼り付け）できるコピペ専用ボードへとリニューアルしました！<br />
+              以下の入力枠内の日本語テキストは、<b>キーボードで、いつでも自由に追記・変更</b>できます。調整完了後、お好きな箇所の「文章をコピーする」ボタンを押すと、一発でクリップボードへ保存されます。
+            </p>
           </div>
         </div>
+      </div>
 
-        <div className="mt-12 text-sm text-gray-600 space-y-1">
-          <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">※ご都合が悪くなった場合は、お早めに担任までご連絡ください。</p>
-          <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-blue-50/50 p-1 rounded cursor-text hover:border-b hover:border-gray-300 transition-colors">※面談場所は各教室となります。</p>
+      <div className="flex items-center justify-between mb-6 print:hidden">
+        <button
+          onClick={() => navigate(`/teacher/class/${classId}`)}
+          className="flex items-center gap-2 px-4 py-2 text-[#44474E] hover:bg-gray-100 rounded-lg transition-colors font-medium text-sm"
+        >
+          <ChevronRight size={18} className="rotate-180" />
+          クラス管理画面に戻る
+        </button>
+
+        <button
+          onClick={handleCopy}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all hover:shadow-md active:scale-95 ${
+            isCopied 
+              ? "bg-green-600 hover:bg-green-700 text-white" 
+              : "bg-blue-600 hover:bg-blue-700 text-white animate-pulse"
+          }`}
+        >
+          {isCopied ? (
+            <>
+              <Check size={18} />
+              コピー完了！
+            </>
+          ) : (
+            <>
+              <Copy size={18} />
+              文章をコピーする
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* 本文エリア */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-lg p-6 md:p-8">
+        <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+          <span className="text-xs font-bold text-gray-400 tracking-wider">PREVIEW & EDIT</span>
+          {isCopied && (
+            <span className="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-full animate-fade-in">
+              配布メッセージを保存しました
+            </span>
+          )}
+        </div>
+
+        <textarea
+          value={messageText}
+          onChange={(e) => setMessageText(e.target.value)}
+          className="w-full h-[600px] p-6 bg-gray-50/50 hover:bg-gray-50 focus:bg-white border-2 border-slate-200 hover:border-slate-300 focus:border-blue-500 rounded-xl focus:ring-4 focus:ring-blue-100 focus:outline-none text-gray-800 text-[14px] leading-relaxed font-sans transition-all resize-y shadow-inner-sm"
+          placeholder="ここに入力・編集されたメッセージがコピーされます。"
+        />
+
+        <div className="mt-6 flex justify-end gap-3 print:hidden">
+          <button
+            onClick={handleCopy}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all shadow-md active:scale-95 w-full md:w-auto justify-center ${
+              isCopied 
+                ? "bg-green-600 hover:bg-green-700 text-white ring-4 ring-green-100" 
+                : "bg-blue-600 hover:bg-blue-700 text-white ring-4 ring-blue-100"
+            }`}
+          >
+            {isCopied ? (
+              <>
+                <Check size={18} />
+                コピーに成功しました！このまま配信できます
+              </>
+            ) : (
+              <>
+                <Copy size={18} />
+                この編集内容で文章をコピーする
+              </>
+            )}
+          </button>
         </div>
       </div>
-      <PdfGuideModal 
-        isOpen={showPdfGuide} 
-        onClose={() => setShowPdfGuide(false)} 
-        onConfirm={() => window.print()} 
-        title="決定通知のお便りをPDFで保存・印刷する" 
-      />
     </div>
   );
 };
