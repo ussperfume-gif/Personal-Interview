@@ -1851,21 +1851,23 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
                               >
                                 <div className="space-y-1.5 h-full flex flex-col justify-between">
                                   <div
-                                    draggable
+                                    draggable={!!slot.studentName && slot.studentName !== '（空き）' && slot.studentName !== '（休憩）'}
                                     onDragStart={(e) => handleDragStart(e, slotIdx)}
                                     onDragEnd={handleDragEnd}
                                     className={cn(
-                                      "flex items-center justify-between gap-1 p-1.5 rounded-lg border shadow-xs cursor-grab active:cursor-grabbing transition-all select-none max-w-full font-bold text-xs",
+                                      "flex items-center justify-between gap-1 p-1.5 rounded-lg border shadow-xs transition-all select-none max-w-full font-bold text-xs",
                                       slot.studentName === '（休憩）' || slot.studentName === '（空き）' || !slot.studentName
-                                        ? "bg-gray-100 border-gray-200 text-gray-400 hover:bg-gray-200"
+                                        ? "bg-gray-100 border-gray-200 text-gray-400 cursor-default hover:bg-gray-200"
                                         : getStudentZoomRequest(slot.studentName)
-                                          ? "bg-blue-50 border-blue-200 text-blue-950 hover:bg-blue-100"
-                                          : "bg-white border-blue-100 text-blue-950 hover:bg-blue-50"
+                                          ? "bg-blue-50 border-blue-200 text-blue-950 cursor-grab active:cursor-grabbing hover:bg-blue-100"
+                                          : "bg-white border-blue-100 text-blue-950 cursor-grab active:cursor-grabbing hover:bg-blue-50"
                                     )}
-                                    title="ドラッグして他の時間帯の枠と入れ替えられます"
+                                    title={!!slot.studentName && slot.studentName !== '（空き）' && slot.studentName !== '（休憩）' ? "ドラッグして他の時間帯の枠と入れ替えられます" : undefined}
                                   >
-                                    <span className="truncate max-w-[100px]">{slot.studentName || '（空き）'}</span>
-                                    <GripVertical size={11} className="text-gray-400 flex-shrink-0" />
+                                    <span className="truncate max-w-[100px] pointer-events-none">{slot.studentName || '（空き）'}</span>
+                                    {!!slot.studentName && slot.studentName !== '（空き）' && slot.studentName !== '（休憩）' && (
+                                      <GripVertical size={11} className="text-gray-400 flex-shrink-0 pointer-events-none" />
+                                    )}
                                   </div>
 
                                   <input
@@ -1963,21 +1965,23 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
                           <div className="flex items-center gap-2 py-0.5">
                             {/* Drag handle block */}
                             <div
-                              draggable
+                              draggable={!!slot.studentName && slot.studentName !== '（空き）' && slot.studentName !== '（休憩）'}
                               onDragStart={(e) => handleDragStart(e, i)}
                               onDragEnd={handleDragEnd}
                               className={cn(
-                                "flex items-center gap-1.5 p-1 px-2.5 rounded-lg border shadow-xs cursor-grab active:cursor-grabbing transition-all select-none max-w-full font-bold text-sm",
+                                "flex items-center gap-1.5 p-1 px-2.5 rounded-lg border shadow-xs transition-all select-none max-w-full font-bold text-sm",
                                 slot.studentName === '（休憩）' || slot.studentName === '（空き）' || !slot.studentName
-                                  ? "bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200"
+                                  ? "bg-gray-100 border-gray-200 text-gray-500 cursor-default hover:bg-gray-200"
                                   : getStudentZoomRequest(slot.studentName)
-                                    ? "bg-blue-50 border-blue-200 text-blue-900 hover:bg-blue-100"
-                                    : "bg-white border-blue-100 text-blue-950 hover:bg-blue-50"
+                                    ? "bg-blue-50 border-blue-200 text-blue-900 cursor-grab active:cursor-grabbing hover:bg-blue-100"
+                                    : "bg-white border-blue-100 text-blue-950 cursor-grab active:cursor-grabbing hover:bg-blue-50"
                               )}
-                              title="ドラッグして他の時間帯の枠と入れ替えられます"
+                              title={!!slot.studentName && slot.studentName !== '（空き）' && slot.studentName !== '（休憩）' ? "ドラッグして他の時間帯の枠と入れ替えられます" : undefined}
                             >
-                              <GripVertical size={13} className="text-gray-400 flex-shrink-0" />
-                              <span className="truncate max-w-[150px]">{slot.studentName || '（空き）'}</span>
+                              {!!slot.studentName && slot.studentName !== '（空き）' && slot.studentName !== '（休憩）' && (
+                                <GripVertical size={13} className="text-gray-400 flex-shrink-0 pointer-events-none" />
+                              )}
+                              <span className="truncate max-w-[150px] pointer-events-none">{slot.studentName || '（空き）'}</span>
                             </div>
 
                             {/* Quick manual text correction field */}
@@ -2060,8 +2064,8 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
                       onDragEnd={handleDragEnd}
                       className="flex items-center gap-1.5 px-3 py-2 bg-white border border-amber-200 text-amber-900 rounded-lg shadow-xs hover:shadow-sm cursor-grab active:cursor-grabbing font-bold text-xs select-none"
                     >
-                      <GripVertical size={12} className="text-amber-400" />
-                      <span>{slot.studentName}</span>
+                      <GripVertical size={12} className="text-amber-400 pointer-events-none" />
+                      <span className="pointer-events-none">{slot.studentName}</span>
                     </div>
                   ))}
                 </div>
