@@ -891,6 +891,17 @@ const ParentResponseList = ({ classId }: { classId: string }) => {
     return unsubscribe;
   }, [classId]);
 
+  const handleDeleteResponse = async (id: string, studentName: string) => {
+    if (confirm(`「${studentName}」さんの回答データを削除してもよろしいですか？\n※この操作は取り消せません。`)) {
+      try {
+        await deleteDoc(doc(db, 'classes', classId, 'parentResponses', id));
+      } catch (err) {
+        console.error(err);
+        alert('削除に失敗しました。');
+      }
+    }
+  };
+
   // CSV Export
   const handleExportCSV = () => {
     if (responses.length === 0) {
@@ -1274,12 +1285,20 @@ const ParentResponseList = ({ classId }: { classId: string }) => {
               <th className="px-6 py-3">面談で話したいこと</th>
               <th className="px-6 py-3">代替の日程希望</th>
               <th className="px-6 py-3">回答日時</th>
+              <th className="px-6 py-3 text-center">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#E1E2E4]">
             {responses.map((r) => (
               <tr key={r.id} className="hover:bg-[#F8F9FA] transition-colors">
-                <td className="px-6 py-4 font-medium">{r.studentName}</td>
+                <td className="px-6 py-4 font-medium flex items-center gap-2">
+                  <span>{r.studentName}</span>
+                  {r.guardianName === '（先生による手動追加）' && (
+                    <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-md">
+                      手動追加
+                    </span>
+                  )}
+                </td>
                 <td className="px-6 py-4 text-sm">
                   {r.wantsZoom ? (
                     <span className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1 rounded-full inline-flex items-center gap-1">
@@ -1299,13 +1318,25 @@ const ParentResponseList = ({ classId }: { classId: string }) => {
                   {r.alternativeSchedule || '-'}
                 </td>
                 <td className="px-6 py-4 text-sm text-[#44474E]">
-                  {r.createdAt ? format(new Date(r.createdAt), 'M/d HH:mm', { locale: ja }) : '回答済み'}
+                  {r.createdAt ? (
+                    r.guardianName === '（先生による手動追加）' ? '手動登録' : format(new Date(r.createdAt), 'M/d HH:mm', { locale: ja })
+                  ) : '回答済み'}
+                </td>
+                <td className="px-6 py-4 text-center">
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteResponse(r.id, r.studentName)}
+                    className="p-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200 inline-flex items-center justify-center"
+                    title="この回答を削除します"
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </td>
               </tr>
             ))}
             {responses.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-6 py-12 text-center text-[#44474E]">まだ回答がありません。</td>
+                <td colSpan={7} className="px-6 py-12 text-center text-[#44474E]">まだ回答がありません。</td>
               </tr>
             )}
           </tbody>
@@ -1325,6 +1356,51 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
   const [allClassesInfo, setAllClassesInfo] = useState<{ [classId: string]: ClassInfo }>({});
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const [newStudentName, setNewStudentName] = useState('');
+  const [newStudentWantsZoom, setNewStudentWantsZoom] = useState(false);
+
+  const handleAddManualResponse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newStudentName.trim();
+    if (!trimmed) {
+      alert('児童・生徒名を入力してください。');
+      return;
+    }
+
+    // Check if duplicate student name
+    const currentClassResponses = allClassesResponses[classId] || [];
+    const isDuplicate = currentClassResponses.some(
+      r => r.studentName.replace(/\s+/g, '') === trimmed.replace(/\s+/g, '')
+    );
+    if (isDuplicate) {
+      alert(`「${trimmed}」さんはすでに回答データが存在します。`);
+      return;
+    }
+
+    try {
+      const normalized = trimmed.replace(/\s+/g, '');
+      const responseData = {
+        studentName: trimmed,
+        normalizedStudentName: normalized,
+        guardianName: '（先生による手動追加）',
+        guardianPhone: '',
+        talkTopics: '',
+        alternativeSchedule: '',
+        wantsZoom: newStudentWantsZoom,
+        unavailableSlots: [],
+        createdAt: new Date().toISOString()
+      };
+
+      await addDoc(collection(db, 'classes', classId, 'parentResponses'), responseData);
+      setNewStudentName('');
+      setNewStudentWantsZoom(false);
+      alert(`「${trimmed}」さんを手動登録しました。自動作成時にも考慮されます。`);
+    } catch (err) {
+      console.error(err);
+      alert('手動登録に失敗しました。');
+    }
+  };
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'classes', classId, 'schedules', 'current'), (docSnap) => {
@@ -1667,71 +1743,135 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
 
   return (
     <div className="space-y-8">
-      <div className="bg-white p-6 rounded-2xl border border-[#E1E2E4] shadow-sm">
-        <h3 className="font-bold mb-4">自動作成設定</h3>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-[#44474E] mb-2">休憩を入れる間隔</label>
-            <div className="flex gap-2">
-              {[0, 1, 2, 3].map(val => (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => setBreakInterval(val)}
-                  className={cn(
-                    "px-4 py-2 rounded-lg border font-medium transition-all",
-                    breakInterval === val
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white border-[#E1E2E4] text-[#44474E] hover:bg-[#F8F9FA]"
-                  )}
-                >
-                  {val === 0 ? 'なし' : `${val}人おき`}
-                </button>
-              ))}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+        {/* 自動作成設定 */}
+        <div className="xl:col-span-2 bg-white p-6 rounded-2xl border border-[#E1E2E4] shadow-sm">
+          <h3 className="font-bold mb-4 flex items-center gap-1.5 text-gray-900">
+            <Settings size={18} className="text-blue-600" />
+            自動作成設定
+          </h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-[#44474E] mb-2">休憩を入れる間隔</label>
+              <div className="flex gap-2">
+                {[0, 1, 2, 3].map(val => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setBreakInterval(val)}
+                    className={cn(
+                      "px-4 py-2 rounded-lg border font-medium transition-all",
+                      breakInterval === val
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white border-[#E1E2E4] text-[#44474E] hover:bg-[#F8F9FA]"
+                    )}
+                  >
+                    {val === 0 ? 'なし' : `${val}人おき`}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">※連続で指定した人数分の面談が入った後に1回休憩（空き枠）を追加します</p>
             </div>
-            <p className="text-xs text-gray-400 mt-1">※連続で指定した人数分の面談が入った後に1回休憩（空き枠）を追加します</p>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-[#44474E]">ZOOM希望者の配置方法</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {[
+                  { val: 'none' as const, label: '日も時間もばらばら（標準）', desc: '空いている枠から割り当て' },
+                  { val: 'one_place' as const, label: '1日1ヵ所にまとめる', desc: '特定の日1日にまとめて割り当て' },
+                  { val: 'time_only' as const, label: '複数日でも時間だけまとめる', desc: '各日の前半に寄せて割り当て' },
+                ].map(item => (
+                  <button
+                    key={item.val}
+                    type="button"
+                    onClick={() => setZoomGroupingPolicy(item.val)}
+                    className={cn(
+                      "px-3 py-2 rounded-lg border text-left flex flex-col justify-between min-h-[4.5rem] transition-all",
+                      zoomGroupingPolicy === item.val
+                        ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                        : "bg-white border-[#E1E2E4] text-[#44474E] hover:bg-[#F8F9FA]"
+                    )}
+                  >
+                    <span className="font-bold text-xs leading-snug">{item.label}</span>
+                    <span className={cn(
+                      "text-[10px] leading-tight block mt-1",
+                      zoomGroupingPolicy === item.val ? "text-blue-100" : "text-gray-400"
+                    )}>
+                      {item.desc}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-[#44474E]">ZOOM希望者の配置方法</label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {[
-                { val: 'none' as const, label: '日も時間もばらばら（標準）', desc: '空いている枠から割り当て' },
-                { val: 'one_place' as const, label: '1日1ヵ所にまとめる', desc: '特定の日1日にまとめて割り当て' },
-                { val: 'time_only' as const, label: '複数日でも時間だけまとめる', desc: '各日の前半に寄せて割り当て' },
-              ].map(item => (
-                <button
-                  key={item.val}
-                  type="button"
-                  onClick={() => setZoomGroupingPolicy(item.val)}
-                  className={cn(
-                    "px-3 py-2 rounded-lg border text-left flex flex-col justify-between min-h-[4.5rem] transition-all",
-                    zoomGroupingPolicy === item.val
-                      ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                      : "bg-white border-[#E1E2E4] text-[#44474E] hover:bg-[#F8F9FA]"
-                  )}
-                >
-                  <span className="font-bold text-xs leading-snug">{item.label}</span>
-                  <span className={cn(
-                    "text-[10px] leading-tight block mt-1",
-                    zoomGroupingPolicy === item.val ? "text-blue-100" : "text-gray-400"
-                  )}>
-                    {item.desc}
-                  </span>
-                </button>
-              ))}
-            </div>
+          <div className="mt-6 pt-6 border-t border-[#F1F2F4] flex justify-end">
+            <button
+              onClick={generateSchedule}
+              disabled={isGenerating}
+              className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+            >
+              {isGenerating ? '作成中...' : 'スケジュールを自動作成する'}
+            </button>
           </div>
         </div>
 
-        <div className="mt-6 pt-6 border-t border-[#F1F2F4] flex justify-end">
-          <button
-            onClick={generateSchedule}
-            disabled={isGenerating}
-            className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
-          >
-            {isGenerating ? '作成中...' : 'スケジュールを自動作成する'}
-          </button>
+        {/* 手動追加（未回答の児童を直接登録） */}
+        <div className="bg-white p-6 rounded-2xl border border-[#E1E2E4] shadow-sm">
+          <h3 className="font-bold mb-2 flex items-center gap-1.5 text-gray-900">
+            <Plus size={18} className="text-blue-600" />
+            未回答の児童を手動登録
+          </h3>
+          <p className="text-xs text-gray-400 mb-4">
+            アンケート未回答の児童をこちらから手動登録できます。登録すると自動作成対象に含まれるようになり、個別配置も可能になります。
+          </p>
+          <form onSubmit={handleAddManualResponse} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-[#44474E] mb-1">児童・生徒名</label>
+              <input
+                type="text"
+                value={newStudentName}
+                onChange={(e) => setNewStudentName(e.target.value)}
+                placeholder="例: 山田 太郎"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-[#44474E] mb-1">希望面談形式</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNewStudentWantsZoom(false)}
+                  className={cn(
+                    "flex-1 py-1.5 rounded-lg border text-xs font-bold transition-all",
+                    !newStudentWantsZoom
+                      ? "bg-gray-100 border-gray-300 text-gray-800"
+                      : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
+                  )}
+                >
+                  🏫 対面
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewStudentWantsZoom(true)}
+                  className={cn(
+                    "flex-1 py-1.5 rounded-lg border text-xs font-bold transition-all",
+                    newStudentWantsZoom
+                      ? "bg-blue-50 border-blue-200 text-blue-700 font-bold"
+                      : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
+                  )}
+                >
+                  💻 Zoom
+                </button>
+              </div>
+            </div>
+            <button
+              type="submit"
+              className="w-full py-2 bg-[#F1F2F4] hover:bg-blue-600 hover:text-white text-gray-700 text-xs font-bold rounded-lg transition-all"
+            >
+              児童を登録する
+            </button>
+          </form>
         </div>
       </div>
 
@@ -1812,13 +1952,32 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
                           </div>
 
                           {/* Quick manual text correction field */}
+                          {/* Dropdown selector for registered students */}
+                          <select
+                            value={slot.studentName || '（空き）'}
+                            onChange={(e) => updateSlot(i, e.target.value)}
+                            className="bg-white border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 px-2 py-1 max-w-[140px] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-xs outline-none"
+                            title="登録済みの児童一覧から選択して割り当てられます"
+                          >
+                            <option value="（空き）">（空き）</option>
+                            <option value="（休憩）">（休憩）</option>
+                            <optgroup label="登録された児童">
+                              {(allClassesResponses[classId] || []).map(r => (
+                                <option key={r.id} value={r.studentName}>
+                                  {r.studentName} {r.wantsZoom ? '💻' : '🏫'}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </select>
+
+                          {/* Quick manual text correction field */}
                           <input
                             type="text"
                             value={slot.studentName}
                             onChange={(e) => updateSlot(i, e.target.value)}
-                            className="bg-transparent border-b border-transparent focus:border-blue-400 focus:ring-0 text-xs text-gray-400 hover:text-gray-600 focus:text-gray-900 transition-all w-24 px-1 py-0.5 ml-1"
-                            placeholder="直接編集..."
-                            title="クリックして名前を直接書き換えることもできます"
+                            className="border border-gray-300 rounded-lg text-xs text-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 w-28 px-2 py-1 outline-none ml-1 bg-white"
+                            placeholder="名前を直接入力..."
+                            title="名前を自由に直接入力・変更できます"
                           />
 
                           {getStudentZoomRequest(slot.studentName) && (
