@@ -1543,9 +1543,12 @@ const ScheduleManager = ({ classId, teacherId }: { classId: string; teacherId?: 
     const unsub = onSnapshot(doc(db, 'classes', classId, 'schedules', 'current'), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setSchedule(data as Schedule);
-        setBreakInterval(data.settings?.breakInterval || 2);
-        setZoomGroupingPolicy(data.settings?.zoomGroupingPolicy || 'none');
+        const sched = data as Schedule;
+        setSchedule(sched);
+        setBreakInterval(sched.settings?.breakInterval || 2);
+        setZoomGroupingPolicy(sched.settings?.zoomGroupingPolicy || 'none');
+        // Synchronize our own schedule to allSchedules state
+        setAllSchedules(prev => ({ ...prev, [classId]: sched }));
       }
     }, (err) => {
       console.error("Firestore onSnapshot error current schedule:", err);
@@ -1553,7 +1556,19 @@ const ScheduleManager = ({ classId, teacherId }: { classId: string; teacherId?: 
     return unsub;
   }, [classId]);
 
-  // Fetch all responses and schedules across all classes to detect siblings
+  // Sync current class's parentResponses via efficient real-time onSnapshot
+  useEffect(() => {
+    const q = collection(db, 'classes', classId, 'parentResponses');
+    const unsub = onSnapshot(q, (snap) => {
+      const resps = snap.docs.map(d => ({ id: d.id, ...d.data() } as ParentResponse));
+      setAllClassesResponses(prev => ({ ...prev, [classId]: resps }));
+    }, (err) => {
+      console.error("Firestore onSnapshot error parentResponses inside ScheduleManager:", err);
+    });
+    return unsub;
+  }, [classId]);
+
+  // Fetch OTHER classes' responses and schedules to detect siblings (only 1-time getDocs call, excluding self)
   useEffect(() => {
     let active = true;
     const fetchAllData = async () => {
@@ -1564,7 +1579,11 @@ const ScheduleManager = ({ classId, teacherId }: { classId: string; teacherId?: 
         const q = query(collection(db, 'classes'), where('teacherId', '==', queryTeacherId));
         const classesSnap = await getDocs(q);
         if (!active) return;
-        const classIds = classesSnap.docs.map(d => d.id).filter(id => !id.startsWith('settings_'));
+        
+        // Exclude own classId to prevent redundant reads of our own class data
+        const classIds = classesSnap.docs
+          .map(d => d.id)
+          .filter(id => !id.startsWith('settings_') && id !== classId);
         
         const infoMap: { [classId: string]: ClassInfo } = {};
         classesSnap.docs.forEach(d => {
@@ -1577,6 +1596,7 @@ const ScheduleManager = ({ classId, teacherId }: { classId: string; teacherId?: 
         const responsesMap: { [classId: string]: ParentResponse[] } = {};
         const schedulesMap: { [classId: string]: Schedule } = {};
 
+        // Load only sibling class details via once-off getDocs/getDoc
         await Promise.all(classIds.map(async (id) => {
           try {
             const respSnap = await getDocs(collection(db, 'classes', id, 'parentResponses'));
@@ -1595,8 +1615,20 @@ const ScheduleManager = ({ classId, teacherId }: { classId: string; teacherId?: 
         }));
 
         if (active) {
-          setAllClassesResponses(responsesMap);
-          setAllSchedules(schedulesMap);
+          setAllClassesResponses(prev => {
+            const next = { ...prev };
+            classIds.forEach(id => {
+              if (responsesMap[id]) next[id] = responsesMap[id];
+            });
+            return next;
+          });
+          setAllSchedules(prev => {
+            const next = { ...prev };
+            classIds.forEach(id => {
+              if (schedulesMap[id]) next[id] = schedulesMap[id];
+            });
+            return next;
+          });
         }
       } catch (err) {
         console.error("Error in fetchAllData:", err);
@@ -1856,10 +1888,21 @@ const ScheduleManager = ({ classId, teacherId }: { classId: string; teacherId?: 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     if (draggingIndex === null || !schedule) return;
     const draggedStudent = schedule.slots[draggingIndex].studentName;
+    const targetStudent = schedule.slots[index].studentName;
+    const draggedSlot = schedule.slots[draggingIndex];
     const targetSlot = schedule.slots[index];
 
+    // Ensure the dragged student is not placed into an NG slot
     if (draggedStudent && draggedStudent !== '（休憩）' && draggedStudent !== '（空き）') {
       const isNG = isSlotNGForStudent(draggedStudent, targetSlot.date, targetSlot.start);
+      if (isNG) {
+        return;
+      }
+    }
+
+    // Ensure the target student (who is being swapped) is not placed into an NG slot (the dragging slot)
+    if (targetStudent && targetStudent !== '（休憩）' && targetStudent !== '（空き）') {
+      const isNG = isSlotNGForStudent(targetStudent, draggedSlot.date, draggedSlot.start);
       if (isNG) {
         return;
       }
@@ -1884,10 +1927,21 @@ const ScheduleManager = ({ classId, teacherId }: { classId: string; teacherId?: 
     }
 
     const draggedStudent = schedule.slots[draggingIndex].studentName;
+    const targetStudent = schedule.slots[targetIndex].studentName;
+    const draggedSlot = schedule.slots[draggingIndex];
     const targetSlot = schedule.slots[targetIndex];
 
+    // Check if the dragged student is allowed in target slot
     if (draggedStudent && draggedStudent !== '（休憩）' && draggedStudent !== '（空き）') {
       if (isSlotNGForStudent(draggedStudent, targetSlot.date, targetSlot.start)) {
+        setDraggingIndex(null);
+        return;
+      }
+    }
+
+    // Check if the target student (swapped into drag source slot) is allowed in drag source slot
+    if (targetStudent && targetStudent !== '（休憩）' && targetStudent !== '（空き）') {
+      if (isSlotNGForStudent(targetStudent, draggedSlot.date, draggedSlot.start)) {
         setDraggingIndex(null);
         return;
       }
@@ -2072,10 +2126,17 @@ const ScheduleManager = ({ classId, teacherId }: { classId: string; teacherId?: 
                 {schedule.slots.map((slot, i) => {
                   const siblings = getSiblingInfo(slot.studentName, classId);
                   const draggedStudent = draggingIndex !== null ? schedule.slots[draggingIndex].studentName : '';
+                  const draggedSlot = draggingIndex !== null ? schedule.slots[draggingIndex] : null;
                   const isDraggingActive = draggingIndex !== null;
                   const isDraggingThis = draggingIndex === i;
                   const isDragOverThis = dragOverIndex === i;
+                  
                   const isNGForDragged = draggedStudent ? isSlotNGForStudent(draggedStudent, slot.date, slot.start) : false;
+                  const isThisNGForDraggedSlot = (draggedSlot && slot.studentName)
+                    ? isSlotNGForStudent(slot.studentName, draggedSlot.date, draggedSlot.start)
+                    : false;
+                  
+                  const isNGForSwap = isNGForDragged || isThisNGForDraggedSlot;
 
                   return (
                     <tr 
@@ -2088,9 +2149,9 @@ const ScheduleManager = ({ classId, teacherId }: { classId: string; teacherId?: 
                         slot.type === 'break' && "bg-gray-50 italic text-gray-500",
                         // Active drag styles
                         isDraggingActive && isDraggingThis && "bg-blue-50/60 opacity-50 border-2 border-dashed border-blue-400 scale-[0.98]",
-                        isDraggingActive && !isDraggingThis && isNGForDragged && "bg-red-50/20 opacity-40 grayscale pointer-events-none select-none hover:bg-red-50/20",
-                        isDraggingActive && !isDraggingThis && !isNGForDragged && isDragOverThis && "bg-green-100/75 border-y-2 border-dashed border-green-500 scale-[0.99] shadow-sm",
-                        isDraggingActive && !isDraggingThis && !isNGForDragged && !isDragOverThis && "bg-green-50/10 border-dashed border-green-200 cursor-copy hover:bg-green-100/30"
+                        isDraggingActive && !isDraggingThis && isNGForSwap && "bg-red-50/20 opacity-40 grayscale pointer-events-none select-none hover:bg-red-50/20",
+                        isDraggingActive && !isDraggingThis && !isNGForSwap && isDragOverThis && "bg-green-100/75 border-y-2 border-dashed border-green-500 scale-[0.99] shadow-sm",
+                        isDraggingActive && !isDraggingThis && !isNGForSwap && !isDragOverThis && "bg-green-50/10 border-dashed border-green-200 cursor-copy hover:bg-green-100/30"
                       )}
                     >
                       <td className="px-6 py-4 text-sm font-medium">
@@ -2151,6 +2212,11 @@ const ScheduleManager = ({ classId, teacherId }: { classId: string; teacherId?: 
                           {getStudentZoomRequest(slot.studentName) && (
                             <span className="flex-shrink-0 text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full select-none animate-pulse" title="Zoom面談を希望しています">
                               💻 Zoom希望
+                            </span>
+                          )}
+                          {slot.studentName && slot.studentName !== '（空き）' && slot.studentName !== '（休憩）' && isSlotNGForStudent(slot.studentName, slot.date, slot.start) && (
+                            <span className="flex-shrink-0 text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 px-2 py-0.5 rounded-full select-none" title="この時間帯はNGに指定されています">
+                              ⚠️ NG日時
                             </span>
                           )}
                         </div>
