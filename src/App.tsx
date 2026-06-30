@@ -1937,6 +1937,22 @@ const ScheduleManager = ({ classId, teacherId }: { classId: string; teacherId?: 
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     if (draggingIndex === null || !schedule) return;
+
+    // Handle automatic scrolling when dragging near the edges of the viewport
+    const clientY = e.clientY;
+    const threshold = 150;
+    const viewHeight = window.innerHeight;
+
+    if (clientY < threshold) {
+      const ratio = (threshold - clientY) / threshold;
+      const scrollSpeed = Math.ceil(ratio * 25);
+      window.scrollBy(0, -scrollSpeed);
+    } else if (clientY > viewHeight - threshold) {
+      const ratio = (clientY - (viewHeight - threshold)) / threshold;
+      const scrollSpeed = Math.ceil(ratio * 25);
+      window.scrollBy(0, scrollSpeed);
+    }
+
     const draggedStudent = schedule.slots[draggingIndex].studentName;
     const targetStudent = schedule.slots[index].studentName;
     const draggedSlot = schedule.slots[draggingIndex];
