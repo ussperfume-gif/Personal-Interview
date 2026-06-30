@@ -66,6 +66,8 @@ interface ClassInfo {
   schoolName?: string;
   teacherName?: string;
   deadline?: string;
+  zoomMeetingId?: string;
+  zoomPassword?: string;
 }
 
 interface TimeSlot {
@@ -558,7 +560,14 @@ const ClassManagement = () => {
   const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
   const [activeTab, setActiveTab] = useState<'availability' | 'responses' | 'schedule'>(() => (safeStorage.getItem(`active_tab_${classId}`) as any) || 'availability');
   const [isEditingInfo, setIsEditingInfo] = useState(false);
-  const [editForm, setEditForm] = useState({ schoolName: '', teacherName: '', name: '', deadline: '' });
+  const [editForm, setEditForm] = useState({ 
+    schoolName: '', 
+    teacherName: '', 
+    name: '', 
+    deadline: '',
+    zoomMeetingId: '',
+    zoomPassword: ''
+  });
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -576,7 +585,9 @@ const ClassManagement = () => {
             schoolName: data.schoolName || '',
             teacherName: data.teacherName || '',
             name: data.name || '',
-            deadline: data.deadline || ''
+            deadline: data.deadline || '',
+            zoomMeetingId: data.zoomMeetingId || '',
+            zoomPassword: data.zoomPassword || ''
           });
           setLoadError(null);
         } else {
@@ -664,48 +675,87 @@ const ClassManagement = () => {
               exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden"
             >
-              <div className="mt-6 p-6 bg-white rounded-2xl border border-blue-100 shadow-sm grid grid-cols-1 sm:grid-cols-4 gap-4">
+              <div className="mt-6 p-6 bg-white rounded-2xl border border-blue-100 shadow-sm space-y-6">
                 <div>
-                  <label className="block text-xs font-bold text-[#44474E] mb-1 uppercase">学校名</label>
-                  <input
-                    type="text"
-                    value={editForm.schoolName}
-                    onChange={(e) => setEditForm({ ...editForm, schoolName: e.target.value })}
-                    placeholder="例：○○市立○○小学校"
-                    className="w-full px-3 py-2 border border-[#E1E2E4] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
+                  <h4 className="text-sm font-bold text-blue-800 mb-3 flex items-center gap-1.5">
+                    <span>🏫</span> 基本情報
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-[#44474E] mb-1 uppercase">学校名</label>
+                      <input
+                        type="text"
+                        value={editForm.schoolName}
+                        onChange={(e) => setEditForm({ ...editForm, schoolName: e.target.value })}
+                        placeholder="例：○○市立○○小学校"
+                        className="w-full px-3 py-2 border border-[#E1E2E4] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-[#44474E] mb-1 uppercase">担任名</label>
+                      <input
+                        type="text"
+                        value={editForm.teacherName}
+                        onChange={(e) => setEditForm({ ...editForm, teacherName: e.target.value })}
+                        placeholder="例：山田 太郎"
+                        className="w-full px-3 py-2 border border-[#E1E2E4] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-[#44474E] mb-1 uppercase">回答締め切り日</label>
+                      <input
+                        type="date"
+                        value={editForm.deadline}
+                        onChange={(e) => setEditForm({ ...editForm, deadline: e.target.value })}
+                        className="w-full px-3 py-2 border border-[#E1E2E4] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#44474E] mb-1 uppercase">担任名</label>
-                  <input
-                    type="text"
-                    value={editForm.teacherName}
-                    onChange={(e) => setEditForm({ ...editForm, teacherName: e.target.value })}
-                    placeholder="例：山田 太郎"
-                    className="w-full px-3 py-2 border border-[#E1E2E4] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
+
+                <div className="pt-4 border-t border-gray-100">
+                  <h4 className="text-sm font-bold text-blue-800 mb-3 flex items-center gap-1.5">
+                    <span>💻</span> オンライン面談用のZoom情報
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-[#44474E] mb-1 uppercase">Zoom ミーティングID</label>
+                      <input
+                        type="text"
+                        value={editForm.zoomMeetingId || ''}
+                        onChange={(e) => setEditForm({ ...editForm, zoomMeetingId: e.target.value })}
+                        placeholder="例：123 456 7890"
+                        className="w-full px-3 py-2 border border-[#E1E2E4] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-[#44474E] mb-1 uppercase">Zoom パスコード / パスワード</label>
+                      <input
+                        type="text"
+                        value={editForm.zoomPassword || ''}
+                        onChange={(e) => setEditForm({ ...editForm, zoomPassword: e.target.value })}
+                        placeholder="例：abcdef"
+                        className="w-full px-3 py-2 border border-[#E1E2E4] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-2 font-medium">
+                    ※ここに入力したミーティングIDとパスワードは、決定通知書のZoom面談枠が決定した方へのご案内文面に自動的に挿入・表示されます。
+                  </p>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#44474E] mb-1 uppercase">回答締め切り日</label>
-                  <input
-                    type="date"
-                    value={editForm.deadline}
-                    onChange={(e) => setEditForm({ ...editForm, deadline: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#E1E2E4] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-                <div className="flex items-end gap-2">
-                  <button
-                    onClick={handleUpdateInfo}
-                    className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold hover:bg-blue-700 transition-colors"
-                  >
-                    保存
-                  </button>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
                   <button
                     onClick={() => setIsEditingInfo(false)}
-                    className="px-4 py-2 text-[#44474E] hover:bg-gray-100 rounded-lg transition-colors"
+                    className="px-4 py-2 text-sm font-bold text-[#44474E] hover:bg-gray-100 rounded-lg transition-colors"
                   >
                     閉じる
+                  </button>
+                  <button
+                    onClick={handleUpdateInfo}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors text-sm"
+                  >
+                    設定を保存する
                   </button>
                 </div>
               </div>
@@ -2839,6 +2889,10 @@ const LetterView = () => {
         }).join('\n')
       : '・（決定された面談枠がありません。スケジュールを自動作成してください）';
 
+    const zoomDetailsText = (classInfo.zoomMeetingId || classInfo.zoomPassword)
+      ? `\n\n【オンライン（Zoom）面談の接続情報】\n・ミーティングID: ${classInfo.zoomMeetingId || '（未設定）'}\n・パスコード/パスワード: ${classInfo.zoomPassword || '（未設定）'}\n※★印の方は、お時間になりましたら上記の情報でZoomに接続してください。`
+      : '';
+
     const text = `【${classInfo.name}】個人面談日程決定のお知らせ
 
 いつも学校の教育活動にご理解とご協力をいただき、誠にありがとうございます。
@@ -2850,11 +2904,11 @@ const LetterView = () => {
 1. 決定した面談日程一覧
 ${slotsText}
 
-※お名前の後ろに★印がある方は、オンライン（Zoom）での面談となります。別途ズーム用の参加用リンクをご確認いただくか、追って学校より接続情報をご案内いたします。
+※お名前の後ろに★印がある方は、オンライン（Zoom）での面談となります。
 
 2. 面談場所
 各教室
-（★印の方はご自宅等からZoomにてご参加ください）
+（★印の方はご自宅等からZoomにてご参加ください）${zoomDetailsText}
 
 ※ご都合が悪くなった場合や急な変更等が生じた場合は、お早めに担任までご連絡ください。`;
 
