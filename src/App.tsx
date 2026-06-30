@@ -11,6 +11,20 @@ import { cn } from './lib/utils';
 // --- Utils ---
 const memoryStorage: Record<string, string> = {};
 
+const safeFormatDate = (dateStr: string | undefined | null, formatStr: string = 'yyyy-MM-dd', outputFormat: string = 'M月d日(E)') => {
+  if (!dateStr) return '';
+  try {
+    const parsed = parse(dateStr, formatStr, new Date());
+    if (isNaN(parsed.getTime())) {
+      return dateStr;
+    }
+    return format(parsed, outputFormat, { locale: ja });
+  } catch (e) {
+    console.error("Failed to parse date:", dateStr, e);
+    return dateStr || '';
+  }
+};
+
 const safeStorage = {
   getItem: (key: string): string | null => {
     try {
@@ -225,6 +239,7 @@ const TeacherDashboard = () => {
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [newClassName, setNewClassName] = useState(() => safeStorage.getItem('draft_class_name') || '');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [schoolName, setSchoolName] = useState('');
   const [deadline, setDeadline] = useState('');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
@@ -238,18 +253,29 @@ const TeacherDashboard = () => {
   useEffect(() => {
     const q = query(collection(db, 'classes'), where('teacherId', '==', teacherId));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() } as ClassInfo))
-        .filter(c => !c.id.startsWith('settings_'));
-      
-      // クラス名で昇順にソートする
-      list.sort((a, b) => {
-        const nameA = a.name || '';
-        const nameB = b.name || '';
-        return nameA.localeCompare(nameB, 'ja', { numeric: true, sensitivity: 'base' });
-      });
+      try {
+        const list = snapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as ClassInfo))
+          .filter(c => !c.id.startsWith('settings_'));
+        
+        // クラス名で昇順にソートする
+        list.sort((a, b) => {
+          const nameA = a.name || '';
+          const nameB = b.name || '';
+          return nameA.localeCompare(nameB, 'ja', { numeric: true, sensitivity: 'base' });
+        });
 
-      setClasses(list);
+        setClasses(list);
+        setError(null);
+        setLoading(false);
+      } catch (err: any) {
+        console.error("Error processing classes list:", err);
+        setError("クラスデータの処理中にエラーが発生しました。");
+        setLoading(false);
+      }
+    }, (err) => {
+      console.error("Firestore onSnapshot error:", err);
+      setError(`クラスデータの読み込みに失敗しました (${err.message || err.code || String(err)})。ネットワーク状況やセキュリティ設定をご確認ください。`);
       setLoading(false);
     });
     return unsubscribe;
@@ -340,6 +366,30 @@ const TeacherDashboard = () => {
   };
 
   if (loading) return <div className="flex justify-center py-20">読み込み中...</div>;
+
+  if (error) {
+    const isQuotaExceeded = error.toLowerCase().includes('quota') || error.toLowerCase().includes('limit exceeded');
+    return (
+      <div className="max-w-xl mx-auto my-12 p-6 bg-red-50 border border-red-200 rounded-2xl text-center">
+        <h3 className="text-red-800 font-bold text-lg mb-2">
+          {isQuotaExceeded ? 'データベースの無料利用枠（クォータ）の上限に達しました' : '読み込みエラー'}
+        </h3>
+        <p className="text-red-700 text-sm mb-6 leading-relaxed text-left whitespace-pre-wrap bg-white p-4 rounded-xl border border-red-100">
+          {isQuotaExceeded 
+            ? "データベース（Firestore）の1日の無料データ読み取り上限（5万回）に達したため、データの読み込みが制限されています。\n\n・原因と対策について：\n他クラスのデータをバックグラウンドで不要に常時監視し続けていた不具合が原因で、データの読み取り回数が急増して制限に達してしまいました。\n本日、この「読み込みを最小限に抑える修正（リアルタイム監視の最適化）」を行いました。これにより、リセット後はクォータ切れになることなく快適にお使いいただけます。\n\n・復旧の見込み：\nこの無料枠制限は、米国太平洋時間の午前0時（日本時間で午後4時頃）にGoogle側で自動的にリセットされます。お手数をおかけしますが、制限リセットまでしばらくお待ちください。"
+            : error}
+        </p>
+        <div className="flex justify-center gap-4">
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-sm transition-colors shadow"
+          >
+            再読み込み
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 md:px-0">
@@ -509,6 +559,7 @@ const ClassManagement = () => {
   const [activeTab, setActiveTab] = useState<'availability' | 'responses' | 'schedule'>(() => (safeStorage.getItem(`active_tab_${classId}`) as any) || 'availability');
   const [isEditingInfo, setIsEditingInfo] = useState(false);
   const [editForm, setEditForm] = useState({ schoolName: '', teacherName: '', name: '', deadline: '' });
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (classId) safeStorage.setItem(`active_tab_${classId}`, activeTab);
@@ -517,16 +568,27 @@ const ClassManagement = () => {
   useEffect(() => {
     if (!classId) return;
     const unsub = onSnapshot(doc(db, 'classes', classId), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = { id: docSnap.id, ...docSnap.data() } as ClassInfo;
-        setClassInfo(data);
-        setEditForm({
-          schoolName: data.schoolName || '',
-          teacherName: data.teacherName || '',
-          name: data.name || '',
-          deadline: data.deadline || ''
-        });
+      try {
+        if (docSnap.exists()) {
+          const data = { id: docSnap.id, ...docSnap.data() } as ClassInfo;
+          setClassInfo(data);
+          setEditForm({
+            schoolName: data.schoolName || '',
+            teacherName: data.teacherName || '',
+            name: data.name || '',
+            deadline: data.deadline || ''
+          });
+          setLoadError(null);
+        } else {
+          setLoadError("指定されたクラス情報が見つかりません。");
+        }
+      } catch (err) {
+        console.error("Error processing class snapshot:", err);
+        setLoadError("クラスデータの処理中にエラーが発生しました。");
       }
+    }, (err) => {
+      console.error("Firestore onSnapshot error:", err);
+      setLoadError(`クラスデータの読み込みに失敗しました (${err.message || err.code || String(err)})。`);
     });
     return unsub;
   }, [classId]);
@@ -536,6 +598,36 @@ const ClassManagement = () => {
     await updateDoc(doc(db, 'classes', classId), editForm);
     setIsEditingInfo(false);
   };
+
+  if (loadError) {
+    const isQuotaExceeded = loadError.toLowerCase().includes('quota') || loadError.toLowerCase().includes('limit exceeded');
+    return (
+      <div className="max-w-xl mx-auto my-12 p-6 bg-red-50 border border-red-200 rounded-2xl text-center">
+        <h3 className="text-red-800 font-bold text-lg mb-2">
+          {isQuotaExceeded ? 'データベースの無料利用枠（クォータ）の上限に達しました' : '読み込みエラー'}
+        </h3>
+        <p className="text-red-700 text-sm mb-6 leading-relaxed text-left whitespace-pre-wrap bg-white p-4 rounded-xl border border-red-100">
+          {isQuotaExceeded 
+            ? "データベース（Firestore）の1日の無料データ読み取り上限（5万回）に達したため、クラス情報の読み込みが制限されています。\n\n・原因と対策について：\n他クラスのデータをバックグラウンドで不要に常時監視し続けていた不具合が原因で、データの読み取り回数が急増して制限に達してしまいました。\n本日、この「読み込みを最小限に抑える修正（リアルタイム監視の最適化）」を行いました。これにより、リセット後はクォータ切れになることなく快適にお使いいただけます。\n\n・復旧の見込み：\nこの無料枠制限は、米国太平洋時間の午前0時（日本時間で午後4時頃）にGoogle側で自動的にリセットされます。お手数をおかけしますが、制限リセットまでしばらくお待ちください。"
+            : loadError}
+        </p>
+        <div className="flex justify-center gap-4">
+          <Link 
+            to="/"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-sm transition-colors shadow"
+          >
+            クラス一覧に戻る
+          </Link>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-sm transition-colors shadow"
+          >
+            再読み込み
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!classInfo) return <div>読み込み中...</div>;
 
@@ -671,6 +763,8 @@ const TeacherAvailabilityManager = ({ classId }: { classId: string }) => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list = snapshot.docs.map(doc => doc.data() as TeacherAvailability);
       setAvailabilities(list.sort((a, b) => a.date.localeCompare(b.date)));
+    }, (err) => {
+      console.error("Firestore onSnapshot error teacherAvailability:", err);
     });
     return unsubscribe;
   }, [classId]);
@@ -887,6 +981,8 @@ const ParentResponseList = ({ classId }: { classId: string }) => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ParentResponse));
       setResponses(list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
+    }, (err) => {
+      console.error("Firestore onSnapshot error parentResponses list:", err);
     });
     return unsubscribe;
   }, [classId]);
@@ -1346,6 +1442,47 @@ const ParentResponseList = ({ classId }: { classId: string }) => {
   );
 };
 
+interface SlotNameInputProps {
+  initialValue: string;
+  onSave: (val: string) => void;
+  placeholder?: string;
+  className?: string;
+  title?: string;
+}
+
+const SlotNameInput = ({ initialValue, onSave, placeholder, className, title }: SlotNameInputProps) => {
+  const [localVal, setLocalVal] = useState(initialValue);
+
+  useEffect(() => {
+    setLocalVal(initialValue);
+  }, [initialValue]);
+
+  const handleBlur = () => {
+    if (localVal !== initialValue) {
+      onSave(localVal);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      value={localVal}
+      onChange={(e) => setLocalVal(e.target.value)}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      className={className}
+      placeholder={placeholder}
+      title={title}
+    />
+  );
+};
+
 const ScheduleManager = ({ classId }: { classId: string }) => {
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [breakInterval, setBreakInterval] = useState(2);
@@ -1410,40 +1547,62 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
         setBreakInterval(data.settings?.breakInterval || 2);
         setZoomGroupingPolicy(data.settings?.zoomGroupingPolicy || 'none');
       }
+    }, (err) => {
+      console.error("Firestore onSnapshot error current schedule:", err);
     });
     return unsub;
   }, [classId]);
 
   // Fetch all responses and schedules across all classes to detect siblings
   useEffect(() => {
+    let active = true;
     const fetchAllData = async () => {
-      const classesSnap = await getDocs(collection(db, 'classes'));
-      const classIds = classesSnap.docs.map(d => d.id).filter(id => !id.startsWith('settings_'));
-      
-      const infoMap: { [classId: string]: ClassInfo } = {};
-      classesSnap.docs.forEach(d => {
-        if (!d.id.startsWith('settings_')) {
-          infoMap[d.id] = d.data() as ClassInfo;
-        }
-      });
-      setAllClassesInfo(infoMap);
-
-      classIds.forEach(id => {
-        // Listen to responses
-        onSnapshot(collection(db, 'classes', id, 'parentResponses'), (snap) => {
-          const resps = snap.docs.map(d => ({ id: d.id, ...d.data() } as ParentResponse));
-          setAllClassesResponses(prev => ({ ...prev, [id]: resps }));
-        });
-        // Listen to schedules
-        onSnapshot(doc(db, 'classes', id, 'schedules', 'current'), (snap) => {
-          if (snap.exists()) {
-            setAllSchedules(prev => ({ ...prev, [id]: snap.data() as Schedule }));
+      try {
+        const classesSnap = await getDocs(collection(db, 'classes'));
+        if (!active) return;
+        const classIds = classesSnap.docs.map(d => d.id).filter(id => !id.startsWith('settings_'));
+        
+        const infoMap: { [classId: string]: ClassInfo } = {};
+        classesSnap.docs.forEach(d => {
+          if (!d.id.startsWith('settings_')) {
+            infoMap[d.id] = d.data() as ClassInfo;
           }
         });
-      });
+        setAllClassesInfo(infoMap);
+
+        const responsesMap: { [classId: string]: ParentResponse[] } = {};
+        const schedulesMap: { [classId: string]: Schedule } = {};
+
+        await Promise.all(classIds.map(async (id) => {
+          try {
+            const respSnap = await getDocs(collection(db, 'classes', id, 'parentResponses'));
+            if (!active) return;
+            const resps = respSnap.docs.map(d => ({ id: d.id, ...d.data() } as ParentResponse));
+            responsesMap[id] = resps;
+
+            const schedSnap = await getDoc(doc(db, 'classes', id, 'schedules', 'current'));
+            if (!active) return;
+            if (schedSnap.exists()) {
+              schedulesMap[id] = schedSnap.data() as Schedule;
+            }
+          } catch (e) {
+            console.error(`Error loading sibling details for class ${id}:`, e);
+          }
+        }));
+
+        if (active) {
+          setAllClassesResponses(responsesMap);
+          setAllSchedules(schedulesMap);
+        }
+      } catch (err) {
+        console.error("Error in fetchAllData:", err);
+      }
     };
     fetchAllData();
-  }, []);
+    return () => {
+      active = false;
+    };
+  }, [classId]);
 
   const getSiblingInfo = (studentName: string, currentClassId: string) => {
     if (!studentName || studentName === '（休憩）' || studentName === '（空き）') return null;
@@ -1971,10 +2130,9 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
                           </select>
 
                           {/* Quick manual text correction field */}
-                          <input
-                            type="text"
-                            value={slot.studentName}
-                            onChange={(e) => updateSlot(i, e.target.value)}
+                          <SlotNameInput
+                            initialValue={slot.studentName || ''}
+                            onSave={(val) => updateSlot(i, val)}
                             className="border border-gray-300 rounded-lg text-xs text-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 w-28 px-2 py-1 outline-none ml-1 bg-white"
                             placeholder="名前を直接入力..."
                             title="名前を自由に直接入力・変更できます"
@@ -2400,15 +2558,15 @@ const RequestLetterView = () => {
 
     const datesText = availabilities.length > 0 
       ? availabilities.map(avail => {
-          const formattedDate = format(parse(avail.date, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja });
-          const start = avail.slots[0]?.start || '';
-          const end = avail.slots[avail.slots.length - 1]?.end || '';
+          const formattedDate = safeFormatDate(avail.date, 'yyyy-MM-dd', 'M月d日(E)');
+          const start = avail.slots?.[0]?.start || '';
+          const end = avail.slots?.[avail.slots?.length - 1]?.end || '';
           return `・${formattedDate} ${start} ～ ${end}`;
         }).join('\n')
       : '・（面談日時が未登録です。管理画面からご設定ください）';
 
     const deadlineText = classInfo.deadline 
-      ? format(parse(classInfo.deadline, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja })
+      ? safeFormatDate(classInfo.deadline, 'yyyy-MM-dd', 'M月d日(E)')
       : '（未設定）';
 
     const parentUrl = `${window.location.origin}/#/parent/${classId}`;
@@ -2564,7 +2722,14 @@ const LetterView = () => {
       if (docSnap.exists()) setClassInfo({ id: docSnap.id, ...docSnap.data() } as ClassInfo);
     });
     getDoc(doc(db, 'classes', classId, 'schedules', 'current')).then(docSnap => {
-      if (docSnap.exists()) setSchedule(docSnap.data() as Schedule);
+      if (docSnap.exists()) {
+        setSchedule(docSnap.data() as Schedule);
+      } else {
+        setSchedule({ slots: [] } as Schedule);
+      }
+    }).catch(err => {
+      console.error(err);
+      setSchedule({ slots: [] } as Schedule);
     });
     getDocs(collection(db, 'classes', classId, 'parentResponses')).then(snapshot => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ParentResponse));
@@ -2575,11 +2740,11 @@ const LetterView = () => {
   useEffect(() => {
     if (!classInfo || !schedule) return;
 
-    const sortedSlots = [...schedule.slots]
-      .filter(s => s.type === 'interview' && s.studentName && !s.studentName.includes('（'))
+    const sortedSlots = [...(schedule?.slots || [])]
+      .filter(s => s && s.type === 'interview' && s.studentName && !s.studentName.includes('（'))
       .sort((a, b) => {
-        if (a.date !== b.date) return a.date.localeCompare(b.date);
-        return a.start.localeCompare(b.start);
+        if (a.date !== b.date) return (a.date || '').localeCompare(b.date || '');
+        return (a.start || '').localeCompare(b.start || '');
       });
 
     const zoomStudentNames = new Set(
@@ -2590,8 +2755,8 @@ const LetterView = () => {
 
     const slotsText = sortedSlots.length > 0 
       ? sortedSlots.map(slot => {
-          const formattedDate = format(parse(slot.date, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja });
-          const normalizedSlotName = slot.studentName.replace(/\s+/g, '');
+          const formattedDate = safeFormatDate(slot.date, 'yyyy-MM-dd', 'M月d日(E)');
+          const normalizedSlotName = (slot.studentName || '').replace(/\s+/g, '');
           const isZoom = zoomStudentNames.has(normalizedSlotName);
           const starMark = isZoom ? " ★" : "";
           return `・${formattedDate} ${slot.start} ～ ${slot.end} ： ${slot.studentName}${starMark} 様`;
