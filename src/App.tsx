@@ -746,7 +746,7 @@ const ClassManagement = () => {
         >
           {activeTab === 'availability' && <TeacherAvailabilityManager classId={classId!} />}
           {activeTab === 'responses' && <ParentResponseList classId={classId!} />}
-          {activeTab === 'schedule' && <ScheduleManager classId={classId!} />}
+          {activeTab === 'schedule' && <ScheduleManager classId={classId!} teacherId={classInfo.teacherId} />}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -933,7 +933,7 @@ const TeacherAvailabilityManager = ({ classId }: { classId: string }) => {
           <div key={avail.date} className="bg-white rounded-2xl border border-[#E1E2E4] shadow-sm overflow-hidden">
             <div className="px-6 py-4 bg-[#F8F9FA] border-b border-[#E1E2E4] flex items-center justify-between">
               <h4 className="font-bold text-lg">
-                {format(parse(avail.date, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja })}
+                {safeFormatDate(avail.date, 'yyyy-MM-dd', 'M月d日(E)')}
               </h4>
               <button
                 onClick={() => deleteDate(avail.date)}
@@ -1483,7 +1483,7 @@ const SlotNameInput = ({ initialValue, onSave, placeholder, className, title }: 
   );
 };
 
-const ScheduleManager = ({ classId }: { classId: string }) => {
+const ScheduleManager = ({ classId, teacherId }: { classId: string; teacherId?: string }) => {
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [breakInterval, setBreakInterval] = useState(2);
   const [zoomGroupingPolicy, setZoomGroupingPolicy] = useState<'none' | 'one_place' | 'time_only'>('none');
@@ -1558,7 +1558,11 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
     let active = true;
     const fetchAllData = async () => {
       try {
-        const classesSnap = await getDocs(collection(db, 'classes'));
+        const queryTeacherId = teacherId || getTeacherId();
+        if (!queryTeacherId) return;
+
+        const q = query(collection(db, 'classes'), where('teacherId', '==', queryTeacherId));
+        const classesSnap = await getDocs(q);
         if (!active) return;
         const classIds = classesSnap.docs.map(d => d.id).filter(id => !id.startsWith('settings_'));
         
@@ -1602,29 +1606,35 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
     return () => {
       active = false;
     };
-  }, [classId]);
+  }, [classId, teacherId]);
 
   const getSiblingInfo = (studentName: string, currentClassId: string) => {
-    if (!studentName || studentName === '（休憩）' || studentName === '（空き）') return null;
+    if (!studentName || studentName === '（休憩）' || studentName === '（空き）' || studentName === '') return null;
     
     // Find the current student's response to get their phone number
     const currentResponse = allClassesResponses[currentClassId]?.find(r => r.studentName === studentName);
-    if (!currentResponse?.guardianPhone) return null;
+    const rawPhone = currentResponse?.guardianPhone?.trim();
+    if (!rawPhone) return null;
 
     const siblings: { studentName: string; className: string; date: string | null; time?: string }[] = [];
 
     Object.entries(allClassesResponses).forEach(([cid, resps]) => {
-      (resps as ParentResponse[]).forEach(r => {
-        if (r.guardianPhone === currentResponse.guardianPhone && r.studentName !== studentName) {
+      if (!Array.isArray(resps)) return;
+      resps.forEach(r => {
+        const siblingPhone = r.guardianPhone?.trim();
+        if (siblingPhone && siblingPhone === rawPhone && r.studentName !== studentName) {
           // Found a sibling. Now check if they are scheduled.
           const siblingSchedule = allSchedules[cid];
-          const scheduledSlot = siblingSchedule?.slots.find(s => s.studentName === r.studentName);
+          const siblingSlots = Array.isArray(siblingSchedule?.slots) ? siblingSchedule.slots : [];
+          const scheduledSlot = siblingSlots.find(s => s.studentName === r.studentName);
           
           siblings.push({
             studentName: r.studentName,
             className: allClassesInfo[cid]?.name || cid,
             date: scheduledSlot ? scheduledSlot.date : null,
-            time: scheduledSlot ? `${format(parse(scheduledSlot.date, 'yyyy-MM-dd', new Date()), 'M/d')} ${scheduledSlot.start}` : '未定'
+            time: scheduledSlot 
+              ? `${safeFormatDate(scheduledSlot.date, 'yyyy-MM-dd', 'M/d')} ${scheduledSlot.start || ''}`.trim() 
+              : '未定'
           });
         }
       });
@@ -2084,7 +2094,7 @@ const ScheduleManager = ({ classId }: { classId: string }) => {
                       )}
                     >
                       <td className="px-6 py-4 text-sm font-medium">
-                        {slot.date ? format(parse(slot.date, 'yyyy-MM-dd', new Date()), 'M/d(E)', { locale: ja }) : '-'}
+                        {slot.date ? safeFormatDate(slot.date, 'yyyy-MM-dd', 'M/d(E)') : '-'}
                       </td>
                       <td className="px-6 py-4 text-sm">
                         {slot.start ? `${slot.start} - ${slot.end}` : '-'}
@@ -2458,7 +2468,7 @@ const ParentForm = () => {
             {availabilities.map((avail) => (
               <div key={avail.date} className="space-y-3">
                 <h4 className="font-bold text-[#44474E] border-l-4 border-blue-500 pl-3">
-                  {format(parse(avail.date, 'yyyy-MM-dd', new Date()), 'M月d日(E)', { locale: ja })}
+                  {safeFormatDate(avail.date, 'yyyy-MM-dd', 'M月d日(E)')}
                 </h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {avail.slots.filter(s => s.isAvailable).map((slot, i) => {
